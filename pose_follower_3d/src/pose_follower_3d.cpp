@@ -40,7 +40,7 @@
 #include <pluginlib/class_list_macros.h>
 #include <full_body_nav_msgs/FullBodyCollisionCheck.h>
 
-PLUGINLIB_DECLARE_CLASS(pose_follower_3d, PoseFollower3D, pose_follower_3d::PoseFollower3D, nav_core::BaseLocalPlanner)
+PLUGINLIB_EXPORT_CLASS( pose_follower_3d::PoseFollower3D, nav_core::BaseLocalPlanner)
 
 namespace pose_follower_3d
 {
