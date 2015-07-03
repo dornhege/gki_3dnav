@@ -1,0 +1,6 @@
+free_thresh: 0.196
+image: geb78_small.pgm
+negate: 0
+occupied_thresh: 0.65
+origin: [-1.1749999999999972, -2.4499999999999886, 0.0]
+resolution: 0.025

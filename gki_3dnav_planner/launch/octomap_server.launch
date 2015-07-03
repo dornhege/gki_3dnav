@@ -1,0 +1,6 @@
+<launch>
+  <arg name="map" default="geb78_small"/>
+
+  <!--starts the octomapserver and 3d localization-->
+  <node name="octomap_server" pkg="octomap_server" type="octomap_server_node" args="$(find gki_3dnav_planner)/worlds/$(arg map)/$(arg map).bt"/>
+</launch>

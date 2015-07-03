@@ -1,0 +1,17 @@
+<launch>
+
+  <arg name="gui" default="true"/>
+  <arg name="world" default="geb78_small"/>
+
+  <param name="/use_sim_time" value="true" />
+
+  <include file="$(find pr2_gazebo)/launch/pr2.launch"/>
+  <!-- start empty world -->
+  <node name="gazebo" pkg="gazebo_ros" type="gzserver" args="-u $(find gki_3dnav_planner)/worlds/$(arg world)/$(arg world).world" respawn="false" output="screen"/>
+  
+  <!-- start gui -->
+  <group if="$(arg gui)">
+    <node name="gazebo_gui" pkg="gazebo_ros" type="gzclient" respawn="false" output="screen"/>
+  </group>
+
+</launch>

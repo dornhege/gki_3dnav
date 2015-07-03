@@ -196,7 +196,7 @@ bool PoseFollower3D::pushOutOfCollisionService(full_body_nav_msgs::PushOutOfColl
         recovery_plan.push_back(pose);
         ROS_INFO("[PoseFollower3D] Recovery: planned trajectory:");
         for(size_t i = 0; i < recovery_plan.size(); ++i)
-          ROS_INFO("[PoseFollower3D] [%d] x: %0.3f  y: %0.3f", recovery_plan[i].pose.position.x, recovery_plan[i].pose.position.y);
+          ROS_INFO("[PoseFollower3D] [%d] x: %0.3f  y: %0.3f", (int)i, recovery_plan[i].pose.position.x, recovery_plan[i].pose.position.y);
         setPlan(recovery_plan);
 
         //now run the controller until we reach the recovery point
@@ -675,7 +675,7 @@ bool PoseFollower3D::setPlan(const std::vector<geometry_msgs::PoseStamped>& glob
 {
 	current_waypoint_ = 0;
 	goal_reached_time_ = ros::Time::now();
-	ROS_INFO("Got global plan with %d waypoints",global_plan.size());
+	ROS_INFO("Got global plan with %d waypoints", (int)global_plan.size());
 	ROS_INFO("Global frame id: %s",costmap_ros_->getGlobalFrameID().c_str());
 	if (!transformGlobalPlan(*tf_, global_plan, *costmap_ros_, costmap_ros_->getGlobalFrameID(), global_plan_)) {
 		ROS_ERROR("Could not transform the global plan to the frame of the controller");

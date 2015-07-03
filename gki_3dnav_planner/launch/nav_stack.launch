@@ -1,0 +1,14 @@
+<launch>
+  <arg name="world" default="geb78_small" />
+  <arg name="mprim" default="pr2sides" />
+  <!-- Run the map-servers -->
+  <include file="$(find gki_3dnav_planner)/launch/amcl.launch" >
+    <arg name="map" value="$(arg world)" />
+  </include>
+  <include file="$(find gki_3dnav_planner)/launch/octomap_server.launch" >
+    <arg name="map" value="$(arg world)" />
+  </include>
+  <include file="$(find gki_3dnav_planner)/launch/move_base_3dnav.launch" >
+    <arg name="mprim" value="$(arg mprim)" />
+  </include>
+</launch>

@@ -1,0 +1,7 @@
+<library path="libgki_3dnav_slice_rviz_plugin">
+  <class name="gki_3dnav_rviz_plugin/RobotSlice" type="gki_3dnav_rviz_plugin::RobotSliceDisplay" base_class_type="rviz::Display">
+    <description>
+      Displays and test the slice and collision of the PR2 3DNav.
+    </description>
+  </class>
+</library>
