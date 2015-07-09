@@ -116,7 +116,7 @@ add_library(
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-# add_dependencies(pose_follower_3d_node pose_follower_3d_generate_messages_cpp)
+add_dependencies(pose_follower_3d full_body_nav_msgs_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(pose_follower_3d

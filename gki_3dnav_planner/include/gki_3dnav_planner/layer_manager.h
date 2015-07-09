@@ -44,8 +44,8 @@ namespace gki_3dnav_planner
     ZRange(const ZRange &range);
     ZRange(double from, double to);
     ~ZRange(){};
-    double from(){return from_;};
-    double to(){ return to_;};
+    double from() const {return from_;};
+    double to() const { return to_;};
 
     bool operator<( const ZRange& other) const {
         return (from_ == other.from_) ? to_ < other.to_ : from_ < other.from_;
@@ -77,6 +77,9 @@ namespace gki_3dnav_planner
      * The map containing the slice paired with its respective z-Range representing the world
      */
     std::map<ZRange, costmap_2d::Costmap2DROS> world_layers_;
+    // std::vector<boost::shared_ptr<costmap_2d::Costmap2D> > world_layers_;
+    // entkoppeln von world_layers_ und ZRange
+
     /*
      * The map containing the slice paired with its respective z-Range representing the robot
      */
