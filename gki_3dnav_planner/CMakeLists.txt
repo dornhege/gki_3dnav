@@ -117,6 +117,7 @@ add_definitions(${EIGEN_DEFINITIONS})
 add_library(gki_3dnav_planner
     src/environment_xyt_3d_collisions.cpp
     src/3dnav_planner.cpp
+    src/layer_manager.cpp
 )
 
 ## Declare a cpp executable

@@ -38,6 +38,7 @@
 #include <ros/ros.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit/planning_scene/planning_scene.h>
+#include <gki_3dnav_planner/layer_manager.h>
 
 class Environment_xyt_3d_collisions: public EnvironmentNAVXYTHETALATTICE
 {
@@ -192,6 +193,7 @@ protected:
 
 	EnvNAVXYTHETALATHashEntry_t** Coord2StateIDHashTable_lookup;
 
+  gki_3dnav_planner::LayerManagerPtr lm_;
 	planning_scene::PlanningScenePtr scene;
 	planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
 	ros::Publisher planning_scene_publisher;

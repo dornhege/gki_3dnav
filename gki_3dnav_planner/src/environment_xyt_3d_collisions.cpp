@@ -74,6 +74,7 @@ Environment_xyt_3d_collisions::Environment_xyt_3d_collisions()
 	//scene_monitor->startSceneMonitor();
 	scene_monitor->requestPlanningSceneState("/get_planning_scene");
 	scene = scene_monitor->getPlanningScene();
+  lm_ = gki_3dnav_planner::LayerManagerPtr(new gki_3dnav_planner::LayerManager());
 	ros::NodeHandle nh("~");
 	planning_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("planning_scene", 1, true);
 	nh.param("full_body_lethal_collision_distance", collision_distance_lethal, 0.05);
@@ -105,6 +106,7 @@ Environment_xyt_3d_collisions::~Environment_xyt_3d_collisions()
 	}
 	scene_monitor.reset();
 	scene.reset();
+  lm_.reset();
 }
 
 void Environment_xyt_3d_collisions::GetCoordFromState(int stateID, int& x, int& y, int& theta) const
@@ -1127,17 +1129,18 @@ int Environment_xyt_3d_collisions::get_full_body_cost_penalty(EnvNAVXYTHETALATHa
 const Environment_xyt_3d_collisions::FullBodyCollisionInfo& Environment_xyt_3d_collisions::get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state)
 {
 	ROS_ASSERT_MSG(full_body_collision_infos.size() > state->stateID, "full_body_collision: state_id mismatch!");
+  sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
+  robot_state::RobotState& robot_state = scene->getCurrentStateNonConst();
+  robot_state.setVariablePosition("world_joint/x", pose.x);
+  robot_state.setVariablePosition("world_joint/y", pose.y);
+  robot_state.setVariablePosition("world_joint/theta", pose.theta);
+  lm_->InCollision(robot_state);
 	if (! full_body_collision_infos[state->stateID].initialized)
 	{
 		collision_detection::CollisionRequest request;
 		//request.distance = true;
 		//request.cost = true;
 		collision_detection::CollisionResult result;
-		sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
-		robot_state::RobotState& robot_state = scene->getCurrentStateNonConst();
-		robot_state.setVariablePosition("world_joint/x", pose.x);
-		robot_state.setVariablePosition("world_joint/y", pose.y);
-		robot_state.setVariablePosition("world_joint/theta", pose.theta);
 		scene->setCurrentState(robot_state);
 		scene->checkCollision(request, result);
 		full_body_collision_infos[state->stateID].initialized = true;
@@ -1164,6 +1167,7 @@ void Environment_xyt_3d_collisions::update_planning_scene()
 {
 	scene_monitor->requestPlanningSceneState("/get_planning_scene");
 	scene = scene_monitor->getPlanningScene();
+  lm_->Update(scene);
 }
 
 void Environment_xyt_3d_collisions::publish_planning_scene()
