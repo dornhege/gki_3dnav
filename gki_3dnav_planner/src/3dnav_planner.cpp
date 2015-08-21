@@ -258,7 +258,7 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 	env_->clear_full_body_collision_infos();
 	env_->update_planning_scene();
 	env_->publish_planning_scene();
-	planner_->force_planning_from_scratch();
+	//planner_->force_planning_from_scratch();
 	try
 	{
 		int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
