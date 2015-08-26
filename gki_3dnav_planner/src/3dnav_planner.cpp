@@ -81,7 +81,17 @@ public:
 };
 
 GKI3dNavPlanner::GKI3dNavPlanner() :
-		initialized_(false), costmap_ros_(NULL)
+		initialized_(false),
+		costmap_ros_(NULL),
+		forward_search_(false),
+		initial_epsilon_(0),
+		env_(NULL),
+		sbpl_cost_multiplier_(0),
+		force_scratch_limit_(0),
+		lethal_obstacle_(0),
+		inscribed_inflated_obstacle_(0),
+		planner_(NULL),
+		allocated_time_(0)
 {
 }
 
@@ -123,7 +133,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 
 		std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
 
-		env_ = new Environment_xyt_3d_collisions();
+		env_ = new Environment_xyt_3d_collisions(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
 
 		// check if the costmap has an inflation layer
 		// Warning: footprint updates after initialization are not supported here
@@ -258,7 +268,7 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 	env_->clear_full_body_collision_infos();
 	env_->update_planning_scene();
 	env_->publish_planning_scene();
-	//planner_->force_planning_from_scratch();
+	planner_->force_planning_from_scratch();
 	try
 	{
 		int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
@@ -419,6 +429,8 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 	plan_pub_.publish(gui_path);
 	publishStats(solution_cost, sbpl_path.size(), start, goal);
 
+	// DeBUG
+	env_->publish_expanded_states();
 	return true;
 }
 }

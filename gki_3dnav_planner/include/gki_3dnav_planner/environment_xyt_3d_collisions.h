@@ -42,7 +42,7 @@
 class Environment_xyt_3d_collisions: public EnvironmentNAVXYTHETALATTICE
 {
 public:
-	Environment_xyt_3d_collisions();
+	Environment_xyt_3d_collisions(double costmapOffsetX, double costmapOffsetY);
 
 	~Environment_xyt_3d_collisions();
 
@@ -164,6 +164,8 @@ public:
 	void publish_planning_scene();
 	void clear_full_body_collision_infos();
 
+	void publish_expanded_states();
+
 protected:
 	//hash table of size x_size*y_size. Maps from coords to stateId
 	int HashTableSize;
@@ -175,15 +177,11 @@ protected:
 	{
 		bool initialized;
 		bool collision;
-		double distance;
-		int penalty;
 
 		FullBodyCollisionInfo()
 		{
 			initialized = false;
 			collision = true;
-			distance = 0.0;
-			penalty = 1000000000;
 		}
 	};
 	double collision_distance_lethal;
@@ -195,6 +193,7 @@ protected:
 	planning_scene::PlanningScenePtr scene;
 	planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
 	ros::Publisher planning_scene_publisher;
+	ros::Publisher pose_array_publisher;
 
 	virtual unsigned int GETHASHBIN(unsigned int X, unsigned int Y, unsigned int Theta);
 
@@ -210,11 +209,13 @@ protected:
 	virtual void InitializeEnvironment();
 
 	sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
-	int get_full_body_cost_penalty(EnvNAVXYTHETALATHashEntry_t* state);
 	bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);
 	const FullBodyCollisionInfo& get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state);
-	int compute_full_body_cost_penalty(double distance);
 	virtual void PrintHashTableHist(FILE* fOut);
+
+	// offsets to convert costmap coordinates to world coordinates for 3d collision checks
+	double costmapOffsetX;
+	double costmapOffsetY;
 };
 
 #endif

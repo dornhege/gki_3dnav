@@ -30,6 +30,7 @@
 #include <cmath>
 #include <cstring>
 #include <ctime>
+#include <geometry_msgs/PoseArray.h>
 #include "gki_3dnav_planner/environment_xyt_3d_collisions.h"
 #include <sbpl/utils/2Dgridsearch.h>
 #include <sbpl/utils/key.h>
@@ -63,8 +64,10 @@ static unsigned int inthash(unsigned int key)
 	return key;
 }
 
-Environment_xyt_3d_collisions::Environment_xyt_3d_collisions()
+Environment_xyt_3d_collisions::Environment_xyt_3d_collisions(double costmapOffsetX, double costmapOffsetY):costmapOffsetX(costmapOffsetX), costmapOffsetY(costmapOffsetY)
 {
+	GetHashEntry = NULL;
+	CreateNewHashEntry = NULL;
 	HashTableSize = 0;
 	Coord2StateIDHashTable = NULL;
 	Coord2StateIDHashTable_lookup = NULL;
@@ -76,6 +79,7 @@ Environment_xyt_3d_collisions::Environment_xyt_3d_collisions()
 	scene = scene_monitor->getPlanningScene();
 	ros::NodeHandle nh("~");
 	planning_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("planning_scene", 1, true);
+	pose_array_publisher = nh.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
 	nh.param("full_body_lethal_collision_distance", collision_distance_lethal, 0.05);
 	nh.param("full_body_irrelevant_collision_distance", collision_distance_irrelevant, 0.5);
 }
@@ -1119,11 +1123,6 @@ bool Environment_xyt_3d_collisions::in_full_body_collision(EnvNAVXYTHETALATHashE
 	return get_full_body_collision_info(state).collision;
 }
 
-int Environment_xyt_3d_collisions::get_full_body_cost_penalty(EnvNAVXYTHETALATHashEntry_t* state)
-{
-	return get_full_body_collision_info(state).penalty;
-}
-
 const Environment_xyt_3d_collisions::FullBodyCollisionInfo& Environment_xyt_3d_collisions::get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state)
 {
 	ROS_ASSERT_MSG(full_body_collision_infos.size() > state->stateID, "full_body_collision: state_id mismatch!");
@@ -1135,29 +1134,15 @@ const Environment_xyt_3d_collisions::FullBodyCollisionInfo& Environment_xyt_3d_c
 		collision_detection::CollisionResult result;
 		sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
 		robot_state::RobotState& robot_state = scene->getCurrentStateNonConst();
-		robot_state.setVariablePosition("world_joint/x", pose.x);
-		robot_state.setVariablePosition("world_joint/y", pose.y);
+		robot_state.setVariablePosition("world_joint/x", pose.x + costmapOffsetX);
+		robot_state.setVariablePosition("world_joint/y", pose.y + costmapOffsetY);
 		robot_state.setVariablePosition("world_joint/theta", pose.theta);
 		scene->setCurrentState(robot_state);
 		scene->checkCollision(request, result);
 		full_body_collision_infos[state->stateID].initialized = true;
 		full_body_collision_infos[state->stateID].collision = result.collision;
-		//full_body_collision_infos[state->stateID].distance = result.distance;
-		//full_body_collision_infos[state->stateID].penalty = compute_full_body_cost_penalty(result.distance);
 	}
 	return full_body_collision_infos[state->stateID];
-}
-
-int Environment_xyt_3d_collisions::compute_full_body_cost_penalty(double distance)
-{
-	// > irrelevant: 0
-	if (distance > collision_distance_irrelevant)
-		return 0;
-	// < lethal: infinitecost
-	if (distance < collision_distance_lethal)
-		return INFINITECOST;
-	// 1/distance in mm
-	return 1000.0 / distance;
 }
 
 void Environment_xyt_3d_collisions::update_planning_scene()
@@ -1171,6 +1156,27 @@ void Environment_xyt_3d_collisions::publish_planning_scene()
 	moveit_msgs::PlanningScene msg;
 	scene->getPlanningSceneMsg(msg);
 	planning_scene_publisher.publish(msg);
+}
+
+void Environment_xyt_3d_collisions::publish_expanded_states()
+{
+	geometry_msgs::PoseArray msg;
+	msg.header.frame_id = scene->getPlanningFrame();
+	for (size_t id = 0; id < full_body_collision_infos.size(); id++)
+	{
+		if (full_body_collision_infos[id].initialized && ! full_body_collision_infos[id].collision)
+		{
+			EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
+			sbpl_xy_theta_pt_t coords = discreteToContinuous(state->X, state->Y, state->Theta);
+			msg.poses.push_back(geometry_msgs::Pose());
+			geometry_msgs::Pose& pose = msg.poses.back();
+			pose.position.x = coords.x + costmapOffsetX;
+			pose.position.y = coords.y + costmapOffsetY;
+			pose.position.z = 0;
+			pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
+		}
+	}
+	pose_array_publisher.publish(msg);
 }
 
 void Environment_xyt_3d_collisions::clear_full_body_collision_infos()
