@@ -7,7 +7,7 @@
     <param name="footprint_padding" value="0.01" />
     <param name="controller_frequency" value="10.0" />
     <param name="controller_patience" value="100.0" />
-    <param name="base_global_planner" value="GKI3dNavPlanner" />
+    <param name="base_global_planner" value="gki_3dnav_planner/GKI3dNavPlanner" />
     <param name="GKI3dNavPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_base.mprim" />
     <rosparam file="$(find gki_3dnav_planner)/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
     <rosparam file="$(find gki_3dnav_planner)/config/costmap_common_params.yaml" command="load" ns="local_costmap" />

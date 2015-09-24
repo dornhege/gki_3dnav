@@ -30,6 +30,14 @@ public:
     void processFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr& feedback);
 
 private:
+    void loadMap();
+    void updatePose(geometry_msgs::Pose pose);
+    void attachBody();
+    void detachBody();
+
+    bool attached;
+    EigenSTL::vector_Affine3d world_coke_poses;
+
     boost::shared_ptr<interactive_markers::InteractiveMarkerServer> collisioinTestServer;
     visualization_msgs::InteractiveMarker start_control_marker;
     visualization_msgs::InteractiveMarker goal_control_marker;
@@ -37,8 +45,8 @@ private:
     ros::Subscriber octomapSubscriber;
     boost::shared_ptr<tf::TransformListener> tf_listener;
 
-    planning_scene::PlanningScenePtr scene;
     planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
+    planning_scene::PlanningScenePtr scene;
     ros::Publisher planning_scene_publisher;
 };
 

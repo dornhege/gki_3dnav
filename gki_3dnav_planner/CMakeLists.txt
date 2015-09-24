@@ -97,7 +97,7 @@ link_directories(${SBPL_LIBRARY_DIRS})
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES gki_3dnav_planner 
-  CATKIN_DEPENDS moveit_msgs nav_core nav_msgs sbpl std_msgs std_srvs visualization_msgs
+  CATKIN_DEPENDS moveit_msgs nav_core nav_msgs std_msgs std_srvs visualization_msgs
   DEPENDS system_lib
 )
 

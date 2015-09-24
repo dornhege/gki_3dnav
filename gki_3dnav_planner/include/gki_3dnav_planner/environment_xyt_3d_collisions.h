@@ -161,10 +161,15 @@ public:
 	}
 
 	void update_planning_scene();
+	void update_planning_scene(planning_scene::PlanningSceneConstPtr scene);
 	void publish_planning_scene();
 	void clear_full_body_collision_infos();
 
 	void publish_expanded_states();
+	planning_scene::PlanningSceneConstPtr getPlanningScene()
+	{
+		return scene;
+	}
 
 protected:
 	//hash table of size x_size*y_size. Maps from coords to stateId
@@ -184,8 +189,6 @@ protected:
 			collision = true;
 		}
 	};
-	double collision_distance_lethal;
-	double collision_distance_irrelevant;
 	std::vector<FullBodyCollisionInfo> full_body_collision_infos;
 
 	EnvNAVXYTHETALATHashEntry_t** Coord2StateIDHashTable_lookup;

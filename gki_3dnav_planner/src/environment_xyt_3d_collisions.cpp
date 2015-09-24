@@ -72,16 +72,21 @@ Environment_xyt_3d_collisions::Environment_xyt_3d_collisions(double costmapOffse
 	Coord2StateIDHashTable = NULL;
 	Coord2StateIDHashTable_lookup = NULL;
 	scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
-	//scene_monitor->startStateMonitor("/move_group/monitored_planning_scene");
-	//scene_monitor->startWorldGeometryMonitor();
-	//scene_monitor->startSceneMonitor();
+	// TODO: read topic from param, so it can be changed to tfd_planning scene
 	scene_monitor->requestPlanningSceneState("/get_planning_scene");
 	scene = scene_monitor->getPlanningScene();
+	collision_detection::AllowedCollisionMatrix& allowed_collisions = scene->getAllowedCollisionMatrixNonConst();
+	allowed_collisions.setDefaultEntry("br_caster_r_wheel_link", true);
+	allowed_collisions.setDefaultEntry("br_caster_l_wheel_link", true);
+	allowed_collisions.setDefaultEntry("bl_caster_r_wheel_link", true);
+	allowed_collisions.setDefaultEntry("bl_caster_l_wheel_link", true);
+	allowed_collisions.setDefaultEntry("fr_caster_r_wheel_link", true);
+	allowed_collisions.setDefaultEntry("fr_caster_l_wheel_link", true);
+	allowed_collisions.setDefaultEntry("fl_caster_r_wheel_link", true);
+	allowed_collisions.setDefaultEntry("fl_caster_l_wheel_link", true);
 	ros::NodeHandle nh("~");
 	planning_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("planning_scene", 1, true);
 	pose_array_publisher = nh.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
-	nh.param("full_body_lethal_collision_distance", collision_distance_lethal, 0.05);
-	nh.param("full_body_irrelevant_collision_distance", collision_distance_irrelevant, 0.5);
 }
 
 Environment_xyt_3d_collisions::~Environment_xyt_3d_collisions()
@@ -107,8 +112,6 @@ Environment_xyt_3d_collisions::~Environment_xyt_3d_collisions()
 		delete[] Coord2StateIDHashTable_lookup;
 		Coord2StateIDHashTable_lookup = NULL;
 	}
-	scene_monitor.reset();
-	scene.reset();
 }
 
 void Environment_xyt_3d_collisions::GetCoordFromState(int stateID, int& x, int& y, int& theta) const
@@ -1129,15 +1132,12 @@ const Environment_xyt_3d_collisions::FullBodyCollisionInfo& Environment_xyt_3d_c
 	if (! full_body_collision_infos[state->stateID].initialized)
 	{
 		collision_detection::CollisionRequest request;
-		//request.distance = true;
-		//request.cost = true;
 		collision_detection::CollisionResult result;
 		sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
 		robot_state::RobotState& robot_state = scene->getCurrentStateNonConst();
 		robot_state.setVariablePosition("world_joint/x", pose.x + costmapOffsetX);
 		robot_state.setVariablePosition("world_joint/y", pose.y + costmapOffsetY);
 		robot_state.setVariablePosition("world_joint/theta", pose.theta);
-		scene->setCurrentState(robot_state);
 		scene->checkCollision(request, result);
 		full_body_collision_infos[state->stateID].initialized = true;
 		full_body_collision_infos[state->stateID].collision = result.collision;
@@ -1149,6 +1149,11 @@ void Environment_xyt_3d_collisions::update_planning_scene()
 {
 	scene_monitor->requestPlanningSceneState("/get_planning_scene");
 	scene = scene_monitor->getPlanningScene();
+}
+
+void Environment_xyt_3d_collisions::update_planning_scene(planning_scene::PlanningSceneConstPtr scene)
+{
+	this->scene = planning_scene::PlanningScene::clone(scene);
 }
 
 void Environment_xyt_3d_collisions::publish_planning_scene()

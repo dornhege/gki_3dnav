@@ -41,6 +41,7 @@
 #include <sbpl_lattice_planner/SBPLLatticePlannerStats.h>
 
 #include <costmap_2d/inflation_layer.h>
+#include <eigen_conversions/eigen_msg.h>
 
 using namespace std;
 using namespace ros;
@@ -251,23 +252,69 @@ void GKI3dNavPlanner::publishStats(int solution_cost, int solution_size, const g
 	stats_publisher_.publish(stats);
 }
 
+bool GKI3dNavPlanner::transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped)
+{
+	planning_scene::PlanningSceneConstPtr scene = env_->getPlanningScene();
+	if (! scene->getTransforms().sameFrame(scene->getPlanningFrame(), stamped.header.frame_id))
+	{
+		if (! scene->getTransforms().canTransform(stamped.header.frame_id))
+		{
+			return false;
+		}
+		Eigen::Affine3d original_goal;
+		tf::poseMsgToEigen(stamped.pose, original_goal);
+		Eigen::Affine3d map_goal;
+		scene->getTransforms().transformPose(stamped.header.frame_id, original_goal, map_goal);
+		tf::poseEigenToMsg(map_goal, stamped.pose);
+		stamped.header.frame_id = scene->getPlanningFrame();
+	}
+	return true;
+}
+
+bool GKI3dNavPlanner::makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
+{
+	const robot_state::RobotState& state = scene->getCurrentState();
+	geometry_msgs::PoseStamped start;
+	start.pose.position.x = state.getVariablePosition("world_joint/x");
+	start.pose.position.y = state.getVariablePosition("world_joint/y");
+	start.pose.position.z = 0;
+	start.pose.orientation = tf::createQuaternionMsgFromYaw(state.getVariablePosition("world_joint/theta"));
+	start.header.frame_id = scene->getPlanningFrame();
+	env_->clear_full_body_collision_infos();
+	env_->update_planning_scene(scene);
+	env_->publish_planning_scene();
+	return makePlan_(start, goal, plan);
+}
 bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
+{
+	env_->clear_full_body_collision_infos();
+	env_->update_planning_scene();
+	env_->publish_planning_scene();
+	return makePlan_(start, goal, plan);
+}
+
+bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan)
 {
 	if (!initialized_)
 	{
 		ROS_ERROR("Global planner is not initialized");
 		return false;
 	}
-
-	plan.clear();
+	if (! transformPoseToPlanningFrame(start))
+	{
+		ROS_ERROR("Unable to transform start pose into planning frame");
+		return false;
+	}
+	if (! transformPoseToPlanningFrame(goal))
+	{
+		ROS_ERROR("Unable to transform goal pose into planning frame");
+		return false;
+	}
 
 	ROS_INFO("[gki_3dnav_planner] getting start point (%g,%g) goal point (%g,%g)", start.pose.position.x, start.pose.position.y, goal.pose.position.x, goal.pose.position.y);
 	double theta_start = 2 * atan2(start.pose.orientation.z, start.pose.orientation.w);
 	double theta_goal = 2 * atan2(goal.pose.orientation.z, goal.pose.orientation.w);
 
-	env_->clear_full_body_collision_infos();
-	env_->update_planning_scene();
-	env_->publish_planning_scene();
 	planner_->force_planning_from_scratch();
 	try
 	{
@@ -400,6 +447,7 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 	ROS_DEBUG("Plan has %d points.\n", (int )sbpl_path.size());
 	ros::Time plan_time = ros::Time::now();
 
+	plan.clear();
 	//create a message for the plan
 	nav_msgs::Path gui_path;
 	gui_path.poses.resize(sbpl_path.size());

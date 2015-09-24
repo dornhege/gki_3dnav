@@ -15,6 +15,7 @@ using namespace std;
 // sbpl headers
 #include "gki_3dnav_planner/environment_xyt_3d_collisions.h"
 #include <sbpl/headers.h>
+#include <geometry_msgs/Pose2D.h>
 
 //global representation
 #include <nav_core/base_global_planner.h>
@@ -47,6 +48,15 @@ public:
 
 	/**
 	 * @brief Given a goal pose in the world, compute a plan
+	 * @param scene The initial scene scpecified as a moveit planning scene
+	 * @param goal The goal pose
+	 * @param plan The plan... filled by the planner
+	 * @return True if a valid plan was found, false otherwise
+	 */
+	bool makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan);
+
+	/**
+	 * @brief Given a goal pose in the world, compute a plan
 	 * @param start The start pose
 	 * @param goal The goal pose
 	 * @param plan The plan... filled by the planner
@@ -60,6 +70,8 @@ public:
 	;
 
 private:
+	bool makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan);
+	bool transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped);
 	unsigned char costMapCostToSBPLCost(unsigned char newcost);
 	void publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal);
 
