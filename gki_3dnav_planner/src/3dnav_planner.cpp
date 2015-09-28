@@ -38,7 +38,7 @@
 #include <gki_3dnav_planner/3dnav_planner.h>
 #include <pluginlib/class_list_macros.h>
 #include <nav_msgs/Path.h>
-#include <sbpl_lattice_planner/SBPLLatticePlannerStats.h>
+//#include <sbpl_lattice_planner/SBPLLatticePlannerStats.h>
 
 #include <costmap_2d/inflation_layer.h>
 #include <eigen_conversions/eigen_msg.h>
@@ -211,7 +211,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 
 		ROS_INFO("[gki_3dnav_planner] Initialized successfully");
 		plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
-		stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
+		//stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
 
 		initialized_ = true;
 	}
@@ -234,22 +234,22 @@ unsigned char GKI3dNavPlanner::costMapCostToSBPLCost(unsigned char newcost)
 void GKI3dNavPlanner::publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal)
 {
 	// Fill up statistics and publish
-	sbpl_lattice_planner::SBPLLatticePlannerStats stats;
-	stats.initial_epsilon = initial_epsilon_;
-	stats.plan_to_first_solution = false;
-	stats.final_number_of_expands = planner_->get_n_expands();
-	stats.allocated_time = allocated_time_;
-
-	stats.time_to_first_solution = planner_->get_initial_eps_planning_time();
-	stats.actual_time = planner_->get_final_eps_planning_time();
-	stats.number_of_expands_initial_solution = planner_->get_n_expands_init_solution();
-	stats.final_epsilon = planner_->get_final_epsilon();
-
-	stats.solution_cost = solution_cost;
-	stats.path_size = solution_size;
-	stats.start = start;
-	stats.goal = goal;
-	stats_publisher_.publish(stats);
+//	sbpl_lattice_planner::SBPLLatticePlannerStats stats;
+//	stats.initial_epsilon = initial_epsilon_;
+//	stats.plan_to_first_solution = false;
+//	stats.final_number_of_expands = planner_->get_n_expands();
+//	stats.allocated_time = allocated_time_;
+//
+//	stats.time_to_first_solution = planner_->get_initial_eps_planning_time();
+//	stats.actual_time = planner_->get_final_eps_planning_time();
+//	stats.number_of_expands_initial_solution = planner_->get_n_expands_init_solution();
+//	stats.final_epsilon = planner_->get_final_epsilon();
+//
+//	stats.solution_cost = solution_cost;
+//	stats.path_size = solution_size;
+//	stats.start = start;
+//	stats.goal = goal;
+//	stats_publisher_.publish(stats);
 }
 
 bool GKI3dNavPlanner::transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped)
