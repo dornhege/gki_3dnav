@@ -29,7 +29,7 @@
 class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
 {
     public:
-        EnvironmentNavXYThetaLatMoveit(double costmapOffsetX, double costmapOffsetY);
+        EnvironmentNavXYThetaLatMoveit(ros::NodeHandle & nhPriv, double costmapOffsetX, double costmapOffsetY);
         virtual ~EnvironmentNavXYThetaLatMoveit() {}
 
         virtual int SetGoal(double x_m, double y_m, double theta_rad);

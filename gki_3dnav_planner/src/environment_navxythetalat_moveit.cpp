@@ -12,7 +12,8 @@
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
 
-EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(double costmapOffsetX, double costmapOffsetY) :
+EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle & nhPriv,
+        double costmapOffsetX, double costmapOffsetY) :
     costmapOffsetX(costmapOffsetX), costmapOffsetY(costmapOffsetY)
 {
     // TODO can we remove these inits, should be done in parent constructor
@@ -22,19 +23,10 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(double costmapOff
     Coord2StateIDHashTable = NULL;
     Coord2StateIDHashTable_lookup = NULL;
 
-    ros::NodeHandle nhPriv("~3dnav");
     nhPriv.param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
     scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
 
-    // TODO read from param
-    allowed_collision_links.push_back("br_caster_r_wheel_link");
-    allowed_collision_links.push_back("br_caster_l_wheel_link");
-    allowed_collision_links.push_back("bl_caster_r_wheel_link");
-    allowed_collision_links.push_back("bl_caster_l_wheel_link");
-    allowed_collision_links.push_back("fr_caster_r_wheel_link");
-    allowed_collision_links.push_back("fr_caster_l_wheel_link");
-    allowed_collision_links.push_back("fl_caster_r_wheel_link");
-    allowed_collision_links.push_back("fl_caster_l_wheel_link");
+    nhPriv.getParam("allowed_collision_links", allowed_collision_links);
 
     update_planning_scene();
 

@@ -134,7 +134,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 
 		std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
 
-		env_ = new EnvironmentNavXYThetaLatMoveit(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
+		env_ = new EnvironmentNavXYThetaLatMoveit(private_nh, costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
 
 		// check if the costmap has an inflation layer
 		// Warning: footprint updates after initialization are not supported here
