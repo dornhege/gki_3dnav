@@ -13,7 +13,7 @@ using namespace std;
 #include <costmap_2d/costmap_2d_ros.h>
 
 // sbpl headers
-#include "gki_3dnav_planner/environment_xyt_3d_collisions.h"
+#include "gki_3dnav_planner/environment_navxythetalat_moveit.h"
 #include <sbpl/headers.h>
 #include <geometry_msgs/Pose2D.h>
 
@@ -78,7 +78,7 @@ private:
 	bool initialized_;
 
 	SBPLPlanner* planner_;
-	Environment_xyt_3d_collisions* env_;
+	EnvironmentNavXYThetaLatMoveit* env_;
 
 	std::string planner_type_; /**< sbpl method to use for planning.  choices are ARAPlanner and ADPlanner */
 

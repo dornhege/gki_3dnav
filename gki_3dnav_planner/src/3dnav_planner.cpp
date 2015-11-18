@@ -54,7 +54,7 @@ namespace gki_3dnav_planner
 class LatticeSCQ: public StateChangeQuery
 {
 public:
-	LatticeSCQ(Environment_xyt_3d_collisions* env, std::vector<nav2dcell_t> const & changedcellsV) :
+	LatticeSCQ(EnvironmentNavXYThetaLatMoveit* env, std::vector<nav2dcell_t> const & changedcellsV) :
 			env_(env), changedcellsV_(changedcellsV)
 	{
 	}
@@ -75,7 +75,7 @@ public:
 		return &succsOfChangedCells_;
 	}
 
-	Environment_xyt_3d_collisions * env_;
+	EnvironmentNavXYThetaLatMoveit * env_;
 	std::vector<nav2dcell_t> const & changedcellsV_;
 	mutable std::vector<int> predsOfChangedCells_;
 	mutable std::vector<int> succsOfChangedCells_;
@@ -134,7 +134,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 
 		std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
 
-		env_ = new Environment_xyt_3d_collisions(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
+		env_ = new EnvironmentNavXYThetaLatMoveit(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
 
 		// check if the costmap has an inflation layer
 		// Warning: footprint updates after initialization are not supported here

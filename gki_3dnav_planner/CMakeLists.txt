@@ -116,6 +116,7 @@ add_definitions(${EIGEN_DEFINITIONS})
 ## Declare a cpp library
 add_library(gki_3dnav_planner
     src/environment_xyt_3d_collisions.cpp
+    src/environment_navxythetalat_moveit.cpp
     src/3dnav_planner.cpp
 )
 
