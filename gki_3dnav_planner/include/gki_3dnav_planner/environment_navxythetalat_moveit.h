@@ -9,9 +9,8 @@
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 
 // TODO
-// FIXME: Do we need to re-set the CreateNewHashEntry_lookup pointer to member things in init or does polymorphism work here?
-// Fix + debug this to be working
-// -> exchancge planning scene to locked
+// FIXME: Do we need to re-set the CreateNewHashEntry_lookup pointer to member things in init or does polymorphism work here? -> Test this
+// refactor set start/goal
 // check who/what uses getActionCost and refactor checks into there if possible (one time check)
 // check how full body caching works, or what we need as cache key now
 //

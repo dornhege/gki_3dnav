@@ -37,46 +37,19 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatMoveit::SetGoal(double x_m, double y_m, double theta_rad)
 {
+    if(EnvironmentNAVXYTHETALAT::SetGoal(x_m, y_m, theta_rad) == -1)
+        return -1;
+
     int x = CONTXY2DISC(x_m, EnvNAVXYTHETALATCfg.cellsize_m);
     int y = CONTXY2DISC(y_m, EnvNAVXYTHETALATCfg.cellsize_m);
     int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
-
-    SBPL_PRINTF("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
-
-    if (!IsWithinMapCell(x, y))
-    {
-        SBPL_ERROR("ERROR: trying to set a goal cell %d %d that is outside of map\n", x, y);
+    EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
+    ROS_ASSERT(OutHashEntry != NULL);   // should have been created by parent
+    if(in_full_body_collision(OutHashEntry)) {
+        SBPL_ERROR("ERROR: goal state in collision\n", x, y);
+        EnvNAVXYTHETALAT.goalstateid = -1;
         return -1;
     }
-
-    if (!IsValidConfiguration(x, y, theta))
-    {
-        SBPL_PRINTF("WARNING: goal configuration is invalid\n");
-    }
-
-    EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-    if ((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL)
-    {
-        //have to create a new entry
-        OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
-    }
-    if (in_full_body_collision(OutHashEntry))
-    {
-        SBPL_ERROR("ERROR: goal state in collision\n", x, y);
-    }
-
-    //need to recompute start heuristics?
-    if (EnvNAVXYTHETALAT.goalstateid != OutHashEntry->stateID)
-    {
-        bNeedtoRecomputeStartHeuristics = true; //because termination condition may not plan all the way to the new goal
-        bNeedtoRecomputeGoalHeuristics = true; //because goal heuristics change
-    }
-
-    EnvNAVXYTHETALAT.goalstateid = OutHashEntry->stateID;
-
-    EnvNAVXYTHETALATCfg.EndX_c = x;
-    EnvNAVXYTHETALATCfg.EndY_c = y;
-    EnvNAVXYTHETALATCfg.EndTheta = theta;
 
     return EnvNAVXYTHETALAT.goalstateid;
 }
@@ -84,47 +57,19 @@ int EnvironmentNavXYThetaLatMoveit::SetGoal(double x_m, double y_m, double theta
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatMoveit::SetStart(double x_m, double y_m, double theta_rad)
 {
+    if(EnvironmentNAVXYTHETALAT::SetStart(x_m, y_m, theta_rad) == -1)
+        return -1;
+
     int x = CONTXY2DISC(x_m, EnvNAVXYTHETALATCfg.cellsize_m);
     int y = CONTXY2DISC(y_m, EnvNAVXYTHETALATCfg.cellsize_m);
     int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
-
-    if (!IsWithinMapCell(x, y))
-    {
-        SBPL_ERROR("ERROR: trying to set a start cell %d %d that is outside of map\n", x, y);
+    EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
+    ROS_ASSERT(OutHashEntry != NULL);
+    if (in_full_body_collision(OutHashEntry)) {
+        SBPL_ERROR("ERROR: start state in collision\n", x, y);
+        EnvNAVXYTHETALAT.startstateid = -1;
         return -1;
     }
-
-    SBPL_PRINTF("env: setting start to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
-
-    if (!IsValidConfiguration(x, y, theta))
-    {
-        SBPL_PRINTF("WARNING: start configuration %d %d %d is invalid\n", x, y, theta);
-    }
-
-    EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-    if ((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL)
-    {
-        //have to create a new entry
-        OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
-    }
-    if (in_full_body_collision(OutHashEntry))
-    {
-        SBPL_ERROR("ERROR: start state in collision\n", x, y);
-    }
-
-    //need to recompute start heuristics?
-    if (EnvNAVXYTHETALAT.startstateid != OutHashEntry->stateID)
-    {
-        bNeedtoRecomputeStartHeuristics = true;
-        //because termination condition can be not all states TODO - make it dependent on term. condition
-        bNeedtoRecomputeGoalHeuristics = true;
-    }
-
-    //set start
-    EnvNAVXYTHETALAT.startstateid = OutHashEntry->stateID;
-    EnvNAVXYTHETALATCfg.StartX_c = x;
-    EnvNAVXYTHETALATCfg.StartY_c = y;
-    EnvNAVXYTHETALATCfg.StartTheta = theta;
 
     return EnvNAVXYTHETALAT.startstateid;
 }
