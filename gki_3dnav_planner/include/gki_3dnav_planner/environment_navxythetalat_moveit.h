@@ -10,7 +10,6 @@
 
 // TODO
 // FIXME: Do we need to re-set the CreateNewHashEntry_lookup pointer to member things in init or does polymorphism work here? -> Test this
-// refactor set start/goal
 // check who/what uses getActionCost and refactor checks into there if possible (one time check)
 // check how full body caching works, or what we need as cache key now
 //
@@ -35,9 +34,6 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual int SetStart(double x_m, double y_m, double theta_rad);
         virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_lookup(int X, int Y, int Theta);
         virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_hash(int X, int Y, int Theta);
-        virtual void GetSuccs(int SourceStateID, std::vector<int>* SuccIDV, std::vector<int>* CostV, std::vector<EnvNAVXYTHETALATAction_t*>* actionV = NULL);
-        virtual void GetPreds(int TargetStateID, std::vector<int>* PredIDV, std::vector<int>* CostV);
-        virtual void SetAllActionsandAllOutcomes(CMDPSTATE* state);
 
         virtual void clear_full_body_collision_infos();
         virtual void publish_expanded_states();
@@ -50,6 +46,9 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual void publish_planning_scene();
         /// Use this to access the PlanningScene. Never use internal data structures for that.
         virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
+
+    protected:
+        virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
 
     protected:
         struct FullBodyCollisionInfo

@@ -176,205 +176,28 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatMoveit::CreateNewHashEntry_
     return HashEntry;
 }
 
-void EnvironmentNavXYThetaLatMoveit::GetSuccs(int SourceStateID, std::vector<int>* SuccIDV, std::vector<int>* CostV, std::vector<EnvNAVXYTHETALATAction_t*>* actionV /*=NULL*/)
+int EnvironmentNavXYThetaLatMoveit::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action)
 {
-    int aind;
+    int cost = EnvironmentNAVXYTHETALAT::GetActionCost(SourceX, SourceY, SourceTheta, action);
+    if(cost >= INFINITECOST)
+        return cost;
 
-#if TIME_DEBUG
-    clock_t currenttime = clock();
-#endif
+    // full body check to maybe disregard state
+    int endX = SourceX + action->dX;
+    int endY = SourceY + action->dY;
+    int endTheta = NORMALIZEDISCTHETA(action->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
-    //clear the successor array
-    SuccIDV->clear();
-    CostV->clear();
-    SuccIDV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
-    CostV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
-    if (actionV != NULL)
-    {
-        actionV->clear();
-        actionV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
+    EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
+    if((OutHashEntry = (this->*GetHashEntry)(endX, endY, endTheta)) == NULL) {
+        // might have to create a end entry
+        OutHashEntry = (this->*CreateNewHashEntry)(endX, endY, endTheta);
     }
+    if(in_full_body_collision(OutHashEntry))
+        return INFINITECOST;
 
-    //goal state should be absorbing
-    if (SourceStateID == EnvNAVXYTHETALAT.goalstateid)
-        return;
-
-    //get X, Y for the state
-    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[SourceStateID];
-
-    //iterate through actions
-    for (aind = 0; aind < EnvNAVXYTHETALATCfg.actionwidth; aind++)
-    {
-        EnvNAVXYTHETALATAction_t* nav3daction = &EnvNAVXYTHETALATCfg.ActionsV[(unsigned int) HashEntry->Theta][aind];
-        int newX = HashEntry->X + nav3daction->dX;
-        int newY = HashEntry->Y + nav3daction->dY;
-        int newTheta = NORMALIZEDISCTHETA(nav3daction->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
-
-        //skip the invalid cells
-        if (!IsValidCell(newX, newY))
-            continue;
-
-        //get cost
-        int cost = GetActionCost(HashEntry->X, HashEntry->Y, HashEntry->Theta, nav3daction);
-        if (cost >= INFINITECOST)
-            continue;
-
-        EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-        if ((OutHashEntry = (this->*GetHashEntry)(newX, newY, newTheta)) == NULL)
-        {
-            //have to create a new entry
-            OutHashEntry = (this->*CreateNewHashEntry)(newX, newY, newTheta);
-        }
-        // 3d collision check
-        if (in_full_body_collision(OutHashEntry))
-            continue;
-        //		cost += get_full_body_cost_penalty(OutHashEntry);
-        //		if (cost >= INFINITECOST)
-        //			continue;
-
-        SuccIDV->push_back(OutHashEntry->stateID);
-        CostV->push_back(cost);
-        if (actionV != NULL)
-            actionV->push_back(nav3daction);
-    }
-
-#if TIME_DEBUG
-    time_getsuccs += clock()-currenttime;
-#endif
+    return cost;
 }
 
-void EnvironmentNavXYThetaLatMoveit::GetPreds(int TargetStateID, std::vector<int>* PredIDV, std::vector<int>* CostV)
-{
-    //TODO- to support tolerance, need:
-    // a) generate preds for goal state based on all possible goal state variable settings,
-    // b) change goal check condition in gethashentry c) change
-    //    getpredsofchangedcells and getsuccsofchangedcells functions
-
-    int aind;
-
-#if TIME_DEBUG
-    clock_t currenttime = clock();
-#endif
-
-    //get X, Y for the state
-    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[TargetStateID];
-
-    //clear the successor array
-    PredIDV->clear();
-    CostV->clear();
-    PredIDV->reserve(EnvNAVXYTHETALATCfg.PredActionsV[(unsigned int) HashEntry->Theta].size());
-    CostV->reserve(EnvNAVXYTHETALATCfg.PredActionsV[(unsigned int) HashEntry->Theta].size());
-
-    //iterate through actions
-    std::vector<EnvNAVXYTHETALATAction_t*>* actionsV = &EnvNAVXYTHETALATCfg.PredActionsV[(unsigned int) HashEntry->Theta];
-    for (aind = 0; aind < (int) EnvNAVXYTHETALATCfg.PredActionsV[(unsigned int) HashEntry->Theta].size(); aind++)
-    {
-
-        EnvNAVXYTHETALATAction_t* nav3daction = actionsV->at(aind);
-
-        int predX = HashEntry->X - nav3daction->dX;
-        int predY = HashEntry->Y - nav3daction->dY;
-        int predTheta = nav3daction->starttheta;
-
-        //skip the invalid cells
-        if (!IsValidCell(predX, predY))
-            continue;
-
-        //get cost
-        int cost = GetActionCost(predX, predY, predTheta, nav3daction);
-        if (cost >= INFINITECOST)
-            continue;
-
-        EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-        if ((OutHashEntry = (this->*GetHashEntry)(predX, predY, predTheta)) == NULL)
-        {
-            //have to create a new entry
-            OutHashEntry = (this->*CreateNewHashEntry)(predX, predY, predTheta);
-        }
-        // 3d collision check
-        if (in_full_body_collision(OutHashEntry))
-            continue;
-        //		cost += get_full_body_cost_penalty(OutHashEntry);
-        //		if (cost >= INFINITECOST)
-        //			continue;
-
-        PredIDV->push_back(OutHashEntry->stateID);
-        CostV->push_back(cost);
-    }
-
-#if TIME_DEBUG
-    time_getsuccs += clock()-currenttime;
-#endif
-}
-
-void EnvironmentNavXYThetaLatMoveit::SetAllActionsandAllOutcomes(CMDPSTATE* state)
-{
-    int cost;
-
-#if DEBUG
-    if(state->StateID >= (int)StateID2CoordTable.size())
-    {
-        SBPL_ERROR("ERROR in Env... function: stateID illegal\n");
-        throw new SBPL_Exception();
-    }
-
-    if((int)state->Actions.size() != 0)
-    {
-        SBPL_ERROR("ERROR in Env_setAllActionsandAllOutcomes: actions already exist for the state\n");
-        throw new SBPL_Exception();
-    }
-#endif
-
-    //goal state should be absorbing
-    if (state->StateID == EnvNAVXYTHETALAT.goalstateid)
-        return;
-
-    //get X, Y for the state
-    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[state->StateID];
-
-    //iterate through actions
-    for (int aind = 0; aind < EnvNAVXYTHETALATCfg.actionwidth; aind++)
-    {
-        EnvNAVXYTHETALATAction_t* nav3daction = &EnvNAVXYTHETALATCfg.ActionsV[(unsigned int) HashEntry->Theta][aind];
-        int newX = HashEntry->X + nav3daction->dX;
-        int newY = HashEntry->Y + nav3daction->dY;
-        int newTheta = NORMALIZEDISCTHETA(nav3daction->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
-
-        //skip the invalid cells
-        if (!IsValidCell(newX, newY))
-            continue;
-
-        //get cost
-        cost = GetActionCost(HashEntry->X, HashEntry->Y, HashEntry->Theta, nav3daction);
-        if (cost >= INFINITECOST)
-            continue;
-
-#if TIME_DEBUG
-        clock_t currenttime = clock();
-#endif
-
-        EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-        if ((OutHashEntry = (this->*GetHashEntry)(newX, newY, newTheta)) == NULL)
-        {
-            //have to create a new entry
-            OutHashEntry = (this->*CreateNewHashEntry)(newX, newY, newTheta);
-        }
-        // 3d collision check
-        if (in_full_body_collision(OutHashEntry))
-            continue;
-        //		cost += get_full_body_cost_penalty(OutHashEntry);
-        //		if (cost >= INFINITECOST)
-        //			continue;
-
-        //add the action
-        CMDPACTION* action = state->AddAction(aind);
-        action->AddOutcome(OutHashEntry->stateID, cost, 1.0);
-
-#if TIME_DEBUG
-        time3_addallout += clock()-currenttime;
-#endif
-    }
-}
 
 // PlanningScene handling
 
