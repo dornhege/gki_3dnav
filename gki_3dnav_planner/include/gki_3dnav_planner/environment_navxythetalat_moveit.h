@@ -10,7 +10,7 @@
 
 // TODO
 // FIXME: Do we need to re-set the CreateNewHashEntry_lookup pointer to member things in init or does polymorphism work here? -> Test this
-// check who/what uses getActionCost and refactor checks into there if possible (one time check)
+// Rewrite how collision test is queried from world/state
 // check how full body caching works, or what we need as cache key now
 //
 // Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target

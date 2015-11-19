@@ -76,104 +76,18 @@ int EnvironmentNavXYThetaLatMoveit::SetStart(double x_m, double y_m, double thet
 
 EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatMoveit::CreateNewHashEntry_lookup(int X, int Y, int Theta)
 {
-    int i;
-
-#if TIME_DEBUG	
-    clock_t currenttime = clock();
-#endif
-
-    EnvNAVXYTHETALATHashEntry_t* HashEntry = new EnvNAVXYTHETALATHashEntry_t;
-
-    HashEntry->X = X;
-    HashEntry->Y = Y;
-    HashEntry->Theta = Theta;
-    HashEntry->iteration = 0;
-
-    HashEntry->stateID = StateID2CoordTable.size();
-
-    //insert into the tables
-    StateID2CoordTable.push_back(HashEntry);
     full_body_collision_infos.push_back(FullBodyCollisionInfo());
+    EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_lookup(X, Y, Theta);
 
-    int index = XYTHETA2INDEX(X, Y, Theta);
-
-#if DEBUG
-    if(Coord2StateIDHashTable_lookup[index] != NULL)
-    {
-        SBPL_ERROR("ERROR: creating hash entry for non-NULL hashentry\n");
-        throw new SBPL_Exception();
-    }
-#endif
-
-    Coord2StateIDHashTable_lookup[index] = HashEntry;
-
-    //insert into and initialize the mappings
-    int* entry = new int[NUMOFINDICES_STATEID2IND];
-    StateID2IndexMapping.push_back(entry);
-    for (i = 0; i < NUMOFINDICES_STATEID2IND; i++)
-    {
-        StateID2IndexMapping[HashEntry->stateID][i] = -1;
-    }
-
-    if (HashEntry->stateID != (int) StateID2IndexMapping.size() - 1)
-    {
-        SBPL_ERROR("ERROR in Env... function: last state has incorrect stateID\n");
-        throw new SBPL_Exception();
-    }
-
-#if TIME_DEBUG
-    time_createhash += clock()-currenttime;
-#endif
-
-    return HashEntry;
+    return he;
 }
 
 EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatMoveit::CreateNewHashEntry_hash(int X, int Y, int Theta)
 {
-    int i;
-
-#if TIME_DEBUG	
-    clock_t currenttime = clock();
-#endif
-
-    EnvNAVXYTHETALATHashEntry_t* HashEntry = new EnvNAVXYTHETALATHashEntry_t;
-
-    HashEntry->X = X;
-    HashEntry->Y = Y;
-    HashEntry->Theta = Theta;
-    HashEntry->iteration = 0;
-
-    HashEntry->stateID = StateID2CoordTable.size();
-
-    //insert into the tables
-    StateID2CoordTable.push_back(HashEntry);
     full_body_collision_infos.push_back(FullBodyCollisionInfo());
+    EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_hash(X, Y, Theta);
 
-    //get the hash table bin
-    i = GETHASHBIN(HashEntry->X, HashEntry->Y, HashEntry->Theta);
-
-    //insert the entry into the bin
-    Coord2StateIDHashTable[i].push_back(HashEntry);
-
-    //insert into and initialize the mappings
-    int* entry = new int[NUMOFINDICES_STATEID2IND];
-    StateID2IndexMapping.push_back(entry);
-    for (i = 0; i < NUMOFINDICES_STATEID2IND; i++)
-    {
-        StateID2IndexMapping[HashEntry->stateID][i] = -1;
-    }
-
-    if (HashEntry->stateID != (int) StateID2IndexMapping.size() - 1)
-    {
-        SBPL_ERROR("ERROR in Env... function: last state has incorrect stateID\n");
-        throw new SBPL_Exception();
-    }
-
-#if TIME_DEBUG
-    time_createhash += clock()-currenttime;
-#endif
-
-    return HashEntry;
+    return he;
 }
 
 int EnvironmentNavXYThetaLatMoveit::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action)
