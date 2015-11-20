@@ -9,8 +9,6 @@
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 
 // TODO
-// FIXME: Do we need to re-set the CreateNewHashEntry_lookup pointer to member things in init or does polymorphism work here? -> Test this
-// Rewrite how collision test is queried from world/state
 // check how full body caching works, or what we need as cache key now
 //
 // Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target
@@ -69,14 +67,11 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
         std::string scene_update_name;  ///< Scene updates are queried by this service.
         ros::Publisher planning_scene_publisher;
-
         std::vector<std::string> allowed_collision_links;
-
 
         ros::Publisher pose_array_publisher;
 
 
-        // TODO this really needed or can we use another disc2cont style fn?
         sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
 
         bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);

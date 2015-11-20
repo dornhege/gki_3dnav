@@ -200,30 +200,19 @@ const EnvironmentNavXYThetaLatMoveit::FullBodyCollisionInfo& EnvironmentNavXYThe
     ROS_ASSERT_MSG(full_body_collision_infos.size() > state->stateID, "full_body_collision: state_id mismatch!");
     if (! full_body_collision_infos[state->stateID].initialized)
     {
-        collision_detection::CollisionRequest request;
-        //request.contacts = true;
-        collision_detection::CollisionResult result;
         sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
-        // TODO
-        robot_state::RobotState& robot_state = scene->getCurrentStateNonConst();
+        // Static uses this to get an initialized state from the scene
+        // that we can subsequently change
+        static robot_state::RobotState robot_state = scene->getCurrentState();
         robot_state.setVariablePosition("world_joint/x", pose.x + costmapOffsetX);
         robot_state.setVariablePosition("world_joint/y", pose.y + costmapOffsetY);
         robot_state.setVariablePosition("world_joint/theta", pose.theta);
         robot_state.update();
-        getPlanningScene()->checkCollision(request, result);
         full_body_collision_infos[state->stateID].initialized = true;
-        full_body_collision_infos[state->stateID].collision = result.collision;
+        full_body_collision_infos[state->stateID].collision = getPlanningScene()->isStateColliding(robot_state);
         //ROS_INFO("get_full_body_collision_info for (%.2f, %.2f, %.2f) = %d",
         //        pose.x + costmapOffsetX, pose.y + costmapOffsetY,
-        //        pose.theta, result.collision);
-        //forEach(const collision_detection::CollisionResult::ContactMap::value_type & vt, result.contacts) {
-        //    printf("%s - %s, Contacts\n", vt.first.first.c_str(), vt.first.second.c_str());
-        //    forEach(const collision_detection::Contact & ct, vt.second) {
-        //        printf("   %s - %s (%f %f %f)\n", ct.body_name_1.c_str(), ct.body_name_2.c_str(),
-        //                ct.pos.x(), ct.pos.y(), ct.pos.z());
-        //    }
-        //}
-
+        //        pose.theta, full_body_collision_infos[state->stateID].collision);
     }
     return full_body_collision_infos[state->stateID];
 }
