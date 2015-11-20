@@ -9,8 +9,6 @@
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 
 // TODO
-// check how full body caching works, or what we need as cache key now
-//
 // Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target
 // check interaction with planning scene from up planner class
 // Integrate these functions directly to work on octomap w/o coll map

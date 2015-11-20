@@ -5,10 +5,6 @@
 #include <sbpl/planners/planner.h>
 #include <moveit/move_group/capability_names.h>
 
-// TODO ugly copied + macro
-#define XYTHETA2INDEX(X,Y,THETA) (THETA + X*EnvNAVXYTHETALATCfg.NumThetaDirs + \
-                                  Y*EnvNAVXYTHETALATCfg.EnvWidth_c*EnvNAVXYTHETALATCfg.NumThetaDirs)
-
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
 
@@ -16,13 +12,6 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
         double costmapOffsetX, double costmapOffsetY) :
     costmapOffsetX(costmapOffsetX), costmapOffsetY(costmapOffsetY)
 {
-    // TODO can we remove these inits, should be done in parent constructor
-    GetHashEntry = NULL;
-    CreateNewHashEntry = NULL;
-    HashTableSize = 0;
-    Coord2StateIDHashTable = NULL;
-    Coord2StateIDHashTable_lookup = NULL;
-
     nhPriv.param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
     scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
 
@@ -76,6 +65,11 @@ int EnvironmentNavXYThetaLatMoveit::SetStart(double x_m, double y_m, double thet
 
 EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatMoveit::CreateNewHashEntry_lookup(int X, int Y, int Theta)
 {
+    // the CreateNewHashEntry... functions always create a new entry, so we can assume that happens and
+    // add the full_body_collision_infos entry now.
+    // Do this before, instead of after the call as exceptions will appear only after a StateID2CoordTable
+    // entry was created, so that at least StateID2CoordTable and full_body_collision_infos are 
+    // consistent.
     full_body_collision_infos.push_back(FullBodyCollisionInfo());
     EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_lookup(X, Y, Theta);
 
