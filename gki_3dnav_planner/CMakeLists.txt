@@ -16,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   #sbpl
   visualization_msgs
   interactive_markers
+  roscpp
+  ais3dTools
 )
 
 ## System dependencies are found with CMake's conventions
@@ -96,7 +98,7 @@ link_directories(${SBPL_LIBRARY_DIRS})
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES gki_3dnav_planner 
+  LIBRARIES gki_3dnav_planner flourish_3dnav_planner
   CATKIN_DEPENDS moveit_msgs nav_core nav_msgs std_msgs std_srvs visualization_msgs
   DEPENDS system_lib
 )
@@ -120,6 +122,12 @@ add_library(gki_3dnav_planner
     src/3dnav_planner.cpp
 )
 
+add_library(flourish_3dnav_planner
+    src/environment_xyt_3d_collisions.cpp
+    src/environment_navxythetalat_flourish.cpp
+    src/3dnav_planner_flourish.cpp
+)
+
 ## Declare a cpp executable
 add_executable(visual_path_planning_node src/VisualPathPlannerNode.cpp)
 
@@ -130,6 +138,11 @@ add_executable(visual_path_planning_node src/VisualPathPlannerNode.cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(gki_3dnav_planner
+	${catkin_LIBRARIES}
+	${SBPL_LIBRARIES} 
+	${Boost_LIBRARIES}
+)
+target_link_libraries(flourish_3dnav_planner
 	${catkin_LIBRARIES}
 	${SBPL_LIBRARIES} 
 	${Boost_LIBRARIES}
