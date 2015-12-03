@@ -167,11 +167,11 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   EnvNAVXYTHETALAT3Dcell_t interm3Dcell;
   int i;
   
-  Eigen::Vector2i gridCoordinatesStart(SourceX, SourceY);
-  Eigen::Vector2f worldCoordinatesStart = tMap.gridToWorld(gridCoordinatesStart);
+  sbpl_xy_theta_pt_t coords = discreteToContinuous(SourceX, SourceY, SourceTheta);
+  //Eigen::Vector2i gridCoordinatesStart(SourceX, SourceY);
+  //Eigen::Vector2f worldCoordinatesStart = tMap.gridToWorld(gridCoordinatesStart);
   Eigen::Isometry3f baseTrafoStart = Eigen::Isometry3f::Identity();
-  // TODO - currently assuming theta is given in degree, is that correct?
-  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(worldCoordinatesStart.x(), worldCoordinatesStart.y(), 0, 0, 0, (float)SourceTheta*M_PI/180.f, baseTrafoStart);
+  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafoStart);
 
   // TODO - check wheel cells
   Eigen::Isometry3f rfWheelToGlobalStart = baseTrafoStart*rightFrontWheelToBaseLink;
@@ -187,12 +187,12 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   Eigen::Vector2i rrWheelStartIndex(tMap.worldToGrid(rrWheelStartCoordinates));
   Eigen::Vector2i lrWheelStartIndex(tMap.worldToGrid(lrWheelStartCoordinates));
 
-  Eigen::Vector2i gridCoordinatesEnd(SourceX+action->dX, SourceY+action->dY);
-  Eigen::Vector2f worldCoordinatesEnd = tMap.gridToWorld(gridCoordinatesEnd);
+  //Eigen::Vector2i gridCoordinatesEnd(SourceX+action->dX, SourceY+action->dY);
+  //Eigen::Vector2f worldCoordinatesEnd = tMap.gridToWorld(gridCoordinatesEnd);
   Eigen::Isometry3f baseTrafoEnd = Eigen::Isometry3f::Identity();
-  // TODO - currently assuming theta is given in degree, is that correct?
   int endTheta = NORMALIZEDISCTHETA(action->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
-  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(worldCoordinatesEnd.x(), worldCoordinatesEnd.y(), 0, 0, 0, (float)endTheta*M_PI/180.f, baseTrafoEnd);
+  coords = discreteToContinuous(SourceX+action->dX, SourceY+action->dY, endTheta);
+  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafoEnd);
 
   Eigen::Isometry3f rfWheelToGlobalEnd = baseTrafoEnd*rightFrontWheelToBaseLink;
   Eigen::Isometry3f lfWheelToGlobalEnd = baseTrafoEnd*leftFrontWheelToBaseLink;
@@ -224,16 +224,13 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   float maxcellcost = 0;
   for(i = 0; i < (int)action->interm3DcellsV.size(); i++){
     interm3Dcell = action->interm3DcellsV.at(i);
-    interm3Dcell.x = interm3Dcell.x + SourceX;
-    interm3Dcell.y = interm3Dcell.y + SourceY;
-    interm3Dcell.theta = NORMALIZEDISCTHETA(interm3Dcell.theta + SourceTheta, NAVXYTHETALAT_THETADIRS);
+    int theta = NORMALIZEDISCTHETA(interm3Dcell.theta, NAVXYTHETALAT_THETADIRS);
+    coords = discreteToContinuous(interm3Dcell.x + SourceX, interm3Dcell.y + SourceY, theta);
           
-    Eigen::Vector2i gridCoordinatesInterm(SourceX+action->dX, SourceY+action->dY);
-    Eigen::Vector2f worldCoordinatesInterm = tMap.gridToWorld(gridCoordinatesInterm);
+    //Eigen::Vector2i gridCoordinatesInterm(SourceX+action->dX, SourceY+action->dY);
+    //Eigen::Vector2f worldCoordinatesInterm = tMap.gridToWorld(gridCoordinatesInterm);
     Eigen::Isometry3f baseTrafoInterm = Eigen::Isometry3f::Identity();
-    // TODO - currently assuming theta is given in degree, is that correct?
-    //int theta = NORMALIZEDISCTHETA(theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
-    Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(worldCoordinatesInterm.x(), worldCoordinatesInterm.y(), 0, 0, 0, (float)interm3Dcell.theta*M_PI/180.f, baseTrafoInterm);
+    Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafoInterm);
 
     Eigen::Isometry3f rfWheelToGlobalInterm = baseTrafoInterm*rightFrontWheelToBaseLink;
     Eigen::Isometry3f lfWheelToGlobalInterm = baseTrafoInterm*leftFrontWheelToBaseLink;

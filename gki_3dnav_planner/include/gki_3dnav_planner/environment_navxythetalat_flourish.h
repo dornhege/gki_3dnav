@@ -84,4 +84,4 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 
 };
 
-#endif // _ENVIRONMENT_NAVXYTHETALAT_FLOURISH_H
+#endif // ENVIRONMENT_NAVXYTHETALAT_FLOURISH_H

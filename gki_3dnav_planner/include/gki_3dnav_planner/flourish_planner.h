@@ -20,24 +20,24 @@ using namespace std;
 //global representation
 #include <nav_core/base_global_planner.h>
 
-namespace gki_3dnav_planner
+namespace flourish_planner
 {
 
-  class GKI3dNavPlannerFlourish: public nav_core::BaseGlobalPlanner
+  class FlourishPlanner: public nav_core::BaseGlobalPlanner
   {
   public:
 
     /**
      * @brief  Default constructor for the NavFnROS object
      */
-    GKI3dNavPlannerFlourish();
+    FlourishPlanner();
 
     /**
      * @brief  Constructor for the SBPLLatticePlanner object
      * @param  name The name of this planner
      * @param  costmap_ros A pointer to the ROS wrapper of the costmap to use
      */
-    GKI3dNavPlannerFlourish(std::string name, costmap_2d::Costmap2DROS* costmap_ros);
+    FlourishPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros);
 
     /**
      * @brief  Initialization function for the SBPLLatticePlanner object
@@ -64,7 +64,7 @@ namespace gki_3dnav_planner
      */
     virtual bool makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan);
 
-    virtual ~GKI3dNavPlannerFlourish()
+    virtual ~FlourishPlanner()
       {
       }
     ;

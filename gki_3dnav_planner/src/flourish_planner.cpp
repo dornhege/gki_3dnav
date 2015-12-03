@@ -35,7 +35,7 @@
  * Author: Mike Phillips
  *********************************************************************/
 
-#include <gki_3dnav_planner/3dnav_planner_flourish.h>
+#include <gki_3dnav_planner/flourish_planner.h>
 #include <pluginlib/class_list_macros.h>
 #include <nav_msgs/Path.h>
 //#include <sbpl_lattice_planner/SBPLLatticePlannerStats.h>
@@ -46,9 +46,9 @@
 using namespace std;
 using namespace ros;
 
-PLUGINLIB_EXPORT_CLASS(gki_3dnav_planner::GKI3dNavPlannerFlourish, nav_core::BaseGlobalPlanner);
+PLUGINLIB_EXPORT_CLASS(flourish_planner::FlourishPlanner, nav_core::BaseGlobalPlanner);
 
-namespace gki_3dnav_planner
+namespace flourish_planner
 {
 
   class LatticeSCQ: public StateChangeQuery
@@ -81,7 +81,7 @@ namespace gki_3dnav_planner
     mutable std::vector<int> succsOfChangedCells_;
   };
 
-  GKI3dNavPlannerFlourish::GKI3dNavPlannerFlourish() :
+  FlourishPlanner::FlourishPlanner() :
     initialized_(false),
     costmap_ros_(NULL),
     forward_search_(false),
@@ -96,13 +96,13 @@ namespace gki_3dnav_planner
   {
   }
 
-  GKI3dNavPlannerFlourish::GKI3dNavPlannerFlourish(std::string name, costmap_2d::Costmap2DROS* costmap_ros) :
+  FlourishPlanner::FlourishPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros) :
     initialized_(false), costmap_ros_(NULL)
   {
     initialize(name, costmap_ros);
   }
 
-  void GKI3dNavPlannerFlourish::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros)
+  void FlourishPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros)
   {
     if (!initialized_)
       {
@@ -219,7 +219,7 @@ namespace gki_3dnav_planner
 
   //Taken from Sachin's sbpl_cart_planner
   //This rescales the costmap according to a rosparam which sets the obstacle cost
-  unsigned char GKI3dNavPlannerFlourish::costMapCostToSBPLCost(unsigned char newcost)
+  unsigned char FlourishPlanner::costMapCostToSBPLCost(unsigned char newcost)
   {
     if (newcost == costmap_2d::LETHAL_OBSTACLE)
       return lethal_obstacle_;
@@ -231,7 +231,7 @@ namespace gki_3dnav_planner
       return (unsigned char) (newcost / sbpl_cost_multiplier_ + 0.5);
   }
 
-  void GKI3dNavPlannerFlourish::publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal)
+  void FlourishPlanner::publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal)
   {
     // Fill up statistics and publish
     //	sbpl_lattice_planner::SBPLLatticePlannerStats stats;
@@ -252,7 +252,7 @@ namespace gki_3dnav_planner
     //	stats_publisher_.publish(stats);
   }
 
-  bool GKI3dNavPlannerFlourish::transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped)
+  bool FlourishPlanner::transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped)
   {
     planning_scene::PlanningSceneConstPtr scene = env_->getPlanningScene();
     if (! scene->getTransforms().sameFrame(scene->getPlanningFrame(), stamped.header.frame_id))
@@ -271,7 +271,7 @@ namespace gki_3dnav_planner
     return true;
   }
 
-  bool GKI3dNavPlannerFlourish::makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
+  bool FlourishPlanner::makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
   {
     const robot_state::RobotState& state = scene->getCurrentState();
     geometry_msgs::PoseStamped start;
@@ -285,7 +285,7 @@ namespace gki_3dnav_planner
     env_->publish_planning_scene();
     return makePlan_(start, goal, plan);
   }
-  bool GKI3dNavPlannerFlourish::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
+  bool FlourishPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
   {
     env_->clear_full_body_collision_infos();
     env_->update_planning_scene();
@@ -293,7 +293,7 @@ namespace gki_3dnav_planner
     return makePlan_(start, goal, plan);
   }
 
-  bool GKI3dNavPlannerFlourish::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan)
+  bool FlourishPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan)
   {
     if (!initialized_)
       {
