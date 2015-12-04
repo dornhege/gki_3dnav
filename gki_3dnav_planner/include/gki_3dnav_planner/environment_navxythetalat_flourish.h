@@ -24,6 +24,7 @@
 class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 {
  public:
+  bool tryToReadPrims(FILE* file){ return ReadMotionPrimitives(file); }
   EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, double costmapOffsetX, double costmapOffsetY);
   virtual ~EnvironmentNavXYThetaLatFlourish() {}
 

@@ -167,11 +167,30 @@ namespace flourish_planner
 	    pt.x = footprint[ii].x;
 	    pt.y = footprint[ii].y;
 	    perimeterptsV.push_back(pt);
+	    std::cout << pt.x << "," << pt.y << " ";
 	  }
 
 	bool ret;
+	std::cout << costmap_ros_->getCostmap()->getSizeInCellsX() << " " << // width
+				      costmap_ros_->getCostmap()->getSizeInCellsY() << " " << // height
+				       " " << costmap_ros_->getCostmap()->getResolution() << " " << nominalvel_mpersecs << " " << timetoturn45degsinplace_secs << " " << obst_cost_thresh << " " << primitive_filename_.c_str();
 	try
 	  {
+	    FILE* bla = fopen(primitive_filename_.c_str(), "r");
+	    if(bla != NULL){
+	      if(env_->tryToReadPrims(bla) == false)
+		{
+		  SBPL_ERROR("ERROR: failed to read in motion primitive file\n");
+		  ROS_ERROR("sbpl exception");
+		}else{
+		  ROS_ERROR("sbpl non exception");
+	      }
+	      std::cout << "read file" << std::endl;
+	    }else{
+	      std::cout << "couldn't read file" << std::endl;
+	    }
+
+	    fclose(bla);
 	    ret = env_->InitializeEnv(costmap_ros_->getCostmap()->getSizeInCellsX(), // width
 				      costmap_ros_->getCostmap()->getSizeInCellsY(), // height
 				      0, // mapdata
@@ -179,9 +198,10 @@ namespace flourish_planner
 				      0, 0, 0, // goal (x, y, theta)
 				      0, 0, 0, //goal tolerance
 				      perimeterptsV, costmap_ros_->getCostmap()->getResolution(), nominalvel_mpersecs, timetoturn45degsinplace_secs, obst_cost_thresh, primitive_filename_.c_str());
-	  } catch (SBPL_Exception& e)
+	  } catch (SBPL_Exception* e)
 	  {
-	    ROS_ERROR("SBPL encountered a fatal exception!");
+
+	    ROS_ERROR("SBPL encountered a fatal exception! %s", e->what());
 	    ret = false;
 	  }
 	if (!ret)
@@ -281,15 +301,15 @@ namespace flourish_planner
     start.pose.orientation = tf::createQuaternionMsgFromYaw(state.getVariablePosition("world_joint/theta"));
     start.header.frame_id = scene->getPlanningFrame();
     env_->clear_full_body_collision_infos();
-    env_->update_planning_scene(scene);
-    env_->publish_planning_scene();
+    //env_->update_planning_scene(scene);
+    //env_->publish_planning_scene();
     return makePlan_(start, goal, plan);
   }
   bool FlourishPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
   {
-    env_->clear_full_body_collision_infos();
-    env_->update_planning_scene();
-    env_->publish_planning_scene();
+    //env_->clear_full_body_collision_infos();
+    //env_->update_planning_scene();
+    //env_->publish_planning_scene();
     return makePlan_(start, goal, plan);
   }
 
@@ -300,7 +320,7 @@ namespace flourish_planner
 	ROS_ERROR("Global planner is not initialized");
 	return false;
       }
-    if (! transformPoseToPlanningFrame(start))
+    /*if (! transformPoseToPlanningFrame(start))
       {
 	ROS_ERROR("Unable to transform start pose into planning frame");
 	return false;
@@ -309,7 +329,7 @@ namespace flourish_planner
       {
 	ROS_ERROR("Unable to transform goal pose into planning frame");
 	return false;
-      }
+	}*/
 
     ROS_INFO("[gki_3dnav_planner] getting start point (%g,%g) goal point (%g,%g)", start.pose.position.x, start.pose.position.y, goal.pose.position.x, goal.pose.position.y);
     double theta_start = 2 * atan2(start.pose.orientation.z, start.pose.orientation.w);

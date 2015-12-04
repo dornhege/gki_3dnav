@@ -58,19 +58,19 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
 
   try{
     tfListener.waitForTransform("/wheel_fr_link",  "/base_link", 
-    				 now, ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(0.5));
     tfListener.lookupTransform("/wheel_fr_link",  "/base_link", 
     				ros::Time(0), rightFrontWheelToBaseLinkTransform);
     tfListener.waitForTransform("/wheel_fl_link",  "/base_link", 
-    				 now, ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(0.5));
     tfListener.lookupTransform("/wheel_fl_link",  "/base_link", 
     				ros::Time(0), leftFrontWheelToBaseLinkTransform);
     tfListener.waitForTransform("/wheel_rr_link",  "/base_link", 
-    				 now, ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(0.5));
     tfListener.lookupTransform("/wheel_rr_link",  "/base_link", 
     				ros::Time(0), rightRearWheelToBaseLinkTransform);
     tfListener.waitForTransform("/wheel_rl_link",  "/base_link", 
-    				 now, ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(0.5));
     tfListener.lookupTransform("/wheel_rl_link",  "/base_link", 
     				ros::Time(0), leftRearWheelToBaseLinkTransform);
   }catch (tf::TransformException ex){
@@ -84,11 +84,11 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   leftRearWheelToBaseLink = stampedTfToIsometry(leftRearWheelToBaseLinkTransform);
 
   nhPriv.param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
-  scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
+  //scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
 
   nhPriv.getParam("allowed_collision_links", allowed_collision_links);
 
-  update_planning_scene();
+  //update_planning_scene();
 
   planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
   pose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
@@ -105,11 +105,11 @@ int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double the
   int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
   ROS_ASSERT(OutHashEntry != NULL);   // should have been created by parent
-  if(in_full_body_collision(OutHashEntry)) {
+  /*TODO if(in_full_body_collision(OutHashEntry)) {
     SBPL_ERROR("ERROR: goal state in collision\n", x, y);
     EnvNAVXYTHETALAT.goalstateid = -1;
     return -1;
-  }
+    }*/
 
   return EnvNAVXYTHETALAT.goalstateid;
 }
@@ -125,11 +125,13 @@ int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double th
   int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
   ROS_ASSERT(OutHashEntry != NULL);
-  if (in_full_body_collision(OutHashEntry)) {
+
+  std::cout << "number of actions: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
+  /*TODO if (in_full_body_collision(OutHashEntry)) {
     SBPL_ERROR("ERROR: start state in collision\n", x, y);
     EnvNAVXYTHETALAT.startstateid = -1;
     return -1;
-  }
+    }*/
 
   return EnvNAVXYTHETALAT.startstateid;
 }
@@ -328,6 +330,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
 
 void EnvironmentNavXYThetaLatFlourish::update_planning_scene()
 {
+  return;
   scene_monitor->requestPlanningSceneState(scene_update_name);
   planning_scene_monitor::LockedPlanningSceneRO ps(scene_monitor);
   scene = planning_scene::PlanningScene::clone(ps);

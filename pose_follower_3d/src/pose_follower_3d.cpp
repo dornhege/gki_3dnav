@@ -312,7 +312,7 @@ void PoseFollower3D::jointStatesCallback(const sensor_msgs::JointState::ConstPtr
 		}
 
 		if (j == state->name.size()) {
-			ROS_WARN("[jointStatesCallback] Missing the value for planning joint (%s)",
+		  ROS_WARN_THROTTLE(5, "[jointStatesCallback] Missing the value for planning joint (%s)",
 			         rightJointNames_[i].c_str());
 		}
 		else {
@@ -330,7 +330,7 @@ void PoseFollower3D::jointStatesCallback(const sensor_msgs::JointState::ConstPtr
 		}
 
 		if (j == state->name.size()) {
-			ROS_WARN("[jointStatesCallback] Missing the value for planning joint (%s)",
+		  ROS_WARN_THROTTLE(5, "[jointStatesCallback] Missing the value for planning joint (%s)",
 			         leftJointNames_[i].c_str());
 		}
 		else {
@@ -345,7 +345,7 @@ void PoseFollower3D::jointStatesCallback(const sensor_msgs::JointState::ConstPtr
 	}
 
 	if (j == state->name.size()) {
-		ROS_WARN("[jointStatesCallback] Missing the value for planning joint torso_lift_joint");
+	  ROS_WARN_THROTTLE(5, "[jointStatesCallback] Missing the value for planning joint torso_lift_joint");
 	}
 	else {
 		spinePosition_ = state->position[j];

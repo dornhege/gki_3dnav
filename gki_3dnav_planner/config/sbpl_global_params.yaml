@@ -7,12 +7,7 @@ GKI3dNavPlanner:
 
   scene_update_name: /get_planning_scene
   allowed_collision_links:
-    - br_caster_r_wheel_link
-    - br_caster_l_wheel_link
-    - bl_caster_r_wheel_link
-    - bl_caster_l_wheel_link
-    - fr_caster_r_wheel_link
-    - fr_caster_l_wheel_link
-    - fl_caster_r_wheel_link
-    - fl_caster_l_wheel_link
-
+    - wheel_fr_link
+    - wheel_fl_link
+    - wheel_rr_link
+    - wheel_rl_link
