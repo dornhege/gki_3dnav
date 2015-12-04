@@ -1,0 +1,10 @@
+;; This buffer is for notes you don't want to save, and for Lisp evaluation.
+;; If you want to create a file, visit that file with C-x C-f,
+;; then enter the text in that file's own buffer.
+
+full body collision checks, planning scene raus
+travmap in planner, uebergeben an env, publishen
+position von travmap so setzen dass roboter drin ist
+envcfg sinnvoll fuellen, Grid2d -> NULL
+grid2d durch travmap ersetzen
+initialize stuff angucken + sinnvoll ersetzen
