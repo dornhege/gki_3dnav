@@ -10,14 +10,8 @@
 #include <iomanip>
 
 /**
- * TODO read in mprims
- * Check what environ does with these for precomputations
- * setup grid with res + cells size (param)
- * for each theta
- *  compute dijkstra style (generalized) heuristic
- *  until 90%?
+ * TODO
  * write/safe heuristic
- * display live?
  */
 
 static int g_maxCost = INFINITECOST;
@@ -27,7 +21,6 @@ static int g_maxCost = INFINITECOST;
 class EnvironmentMotionPrims : public EnvironmentNAVXYTHETALATTICE 
 {
     public:
-    // need actions
 
     EnvironmentMotionPrims(int width, int height,
             double nominalvel_mpersecs, double timetoturn45degsinplace_secs) {
@@ -148,7 +141,7 @@ struct SearchNode {
     int g;
 
     bool operator<(const SearchNode & rhs) const {
-        return g < rhs.g;
+        return g > rhs.g;
     }
 
     SearchNode(int x, int y, int theta, int g) : x(x), y(y), theta(theta), g(g) {}
@@ -169,6 +162,8 @@ void updateMaxCost(const EnvNAVXYTHETALATConfig_t & cfg, unsigned int*** costmap
     }
     if(max > g_maxCost || g_maxCost == INFINITECOST)
         g_maxCost = max;
+    if(g_maxCost == 0)
+        g_maxCost = 1;
 }
 
 
@@ -178,17 +173,28 @@ void saveCostmap(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int**
     if(!f.good())
         return;
 
-    f << "P2 " << cfg.EnvWidth_c << " " << cfg.EnvHeight_c << " 255" << std::endl;
+    f << "P3 " << cfg.EnvWidth_c << " " << cfg.EnvHeight_c << " 255" << std::endl;
 
-    for(unsigned int x = 0; x < cfg.EnvWidth_c; ++x) {
-        for(unsigned int y = 0; y < cfg.EnvHeight_c; ++y) {
-            unsigned int cost = costmap[x][y][theta];
+    // image save, i.e.: iterate lines by height and start with "top line", i.e. the last/max index
+    for(int y = cfg.EnvHeight_c - 1; y >= 0; --y) {
+        for(unsigned int x = 0; x < cfg.EnvWidth_c; ++x) {
+            unsigned int cost = 255;
+            if(theta < 0) {
+                cost = costmap[x][y][0];
+                for(unsigned int th = 1; th < cfg.NumThetaDirs; ++th) {
+                    if(costmap[x][y][th] < cost)
+                        cost = costmap[x][y][th];
+                }
+            } else {
+                cost = costmap[x][y][theta];
+            }
             if(cost == INFINITECOST) {
-                f << "255 0";
+                f << "255 0 255 ";
                 continue;
             }
-            int c = int(double(cost)/g_maxCost * 255.0);
-            f << c << " ";
+            int c = int(double(cost)/g_maxCost * 240.0);
+            //printf("Writing cost: %d as %d for th %d (max %d)\n", cost, c, theta, g_maxCost);
+            f << c << " " << c << " " << c << " ";
         }
         f << std::endl;
     }
@@ -202,12 +208,14 @@ void computeCosts(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int*
     queue.push(SearchNode(cfg.EnvWidth_c/2, cfg.EnvHeight_c/2, theta, 0));
 
     unsigned int grid_size = cfg.EnvWidth_c * cfg.EnvHeight_c * cfg.NumThetaDirs;
-    // TODO why is queue maxed out and doesn't change any more?
 
+    const bool debug = false;
+
+    int count = 0;
     unsigned int expanded = 0;
     while(!queue.empty()) {
-        unsigned int debugInterval = 1;
-        if(expanded % (debugInterval) == 0) {
+        unsigned int debugInterval = 100*1000;
+        if(debug && expanded % (debugInterval) == 0) {
             printf("Queue: %zu, Expanded: %d Grid: %d (%.2f x)\n", queue.size(), expanded, cfg.EnvWidth_c * cfg.EnvHeight_c * cfg.NumThetaDirs, (double)expanded/(cfg.EnvWidth_c * cfg.EnvHeight_c * cfg.NumThetaDirs)*1.0);
             unsigned int filled = 0;
             for(unsigned int x = 0; x < cfg.EnvWidth_c; ++x) {
@@ -220,23 +228,33 @@ void computeCosts(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int*
             }
             printf("Filled: %d/%d (%.2f %%)\n", filled, grid_size, double(filled)/grid_size*100.0);
             if(filled > 0) {
-                if(g_maxCost == INFINITECOST)
-                    updateMaxCost(cfg, costmap);
-                static int count = 0;
+                updateMaxCost(cfg, costmap);
+                printf("Max Cost is: %d\n", g_maxCost);
+                std::stringstream ss;
                 for(int th = 0; th < cfg.NumThetaDirs; th++) {
-                    std::stringstream ss;
                     ss << std::setfill('0') << std::setw(6) << count;
                     std::string countStr = ss.str();
                     ss.str("");
+
                     ss << std::setfill('0') << std::setw(2) << th;
                     std::string endTh = ss.str();
                     ss.str("");
+
                     ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_" << countStr << "_"  << endTh << ".pgm";
                     saveCostmap(cfg, th, costmap, ss.str());
+                    ss.str("");
                 }
+                ss << std::setfill('0') << std::setw(6) << count;
+                std::string countStr = ss.str();
+                ss.str("");
+                ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_bestTh" << "_" << countStr << ".pgm";
+                saveCostmap(cfg, -1, costmap, ss.str());
+
                 count++;
-                if(count > 10)
+                if(count > 20) {
+                    printf("Stopping at count %d\n", count);
                     break;
+                }
             }
         }
         SearchNode current = queue.top();
@@ -257,6 +275,24 @@ void computeCosts(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int*
         }
     }
     printf("Total expanded: %d\n", expanded);
+
+    updateMaxCost(cfg, costmap);
+    printf("Max Cost is: %d\n", g_maxCost);
+    std::stringstream ss;
+    for(int th = 0; th < cfg.NumThetaDirs; th++) {
+        std::string countStr = "final";
+
+        ss << std::setfill('0') << std::setw(2) << th;
+        std::string endTh = ss.str();
+        ss.str("");
+
+        ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_" << countStr << "_"  << endTh << ".pgm";
+        saveCostmap(cfg, th, costmap, ss.str());
+        ss.str("");
+    }
+    std::string countStr = "final";
+    ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_bestTh" << "_" << countStr << ".pgm";
+    saveCostmap(cfg, -1, costmap, ss.str());
 }
 
 int main(int argc, char** argv)
@@ -315,12 +351,10 @@ int main(int argc, char** argv)
     }
     // Each costmap contains the costs to get from (0, 0, start theta) -> each cells (dx, dy, end theta)
 
-    // TODO parallelize
     for(unsigned int th = 0; th < cfg.NumThetaDirs; ++th) {
         printf("Computing costs for th: %d\n", th);
         g_maxCost = INFINITECOST;
         computeCosts(cfg, th, costmaps[th]);
-        break;
     }
 
     return 0;
