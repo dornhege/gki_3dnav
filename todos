@@ -3,8 +3,9 @@
 ;; then enter the text in that file's own buffer.
 
 full body collision checks, planning scene raus
+get frame from costmap
 travmap in planner, uebergeben an env, publishen
 position von travmap so setzen dass roboter drin ist
 envcfg sinnvoll fuellen, Grid2d -> NULL
 grid2d durch travmap ersetzen
-initialize stuff angucken + sinnvoll ersetzen
+initialize stuff angucken (initEnv, initGeneral,...) + sinnvoll ersetzen

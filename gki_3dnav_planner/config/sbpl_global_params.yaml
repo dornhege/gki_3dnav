@@ -1,4 +1,4 @@
-GKI3dNavPlanner:
+FlourishPlanner:
   environment_type: XYT_3dCollisions
   planner_type: ARAPlanner
   allocated_time: 10.0

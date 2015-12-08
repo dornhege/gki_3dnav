@@ -26,35 +26,111 @@ Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
   return result;
 }
 
-EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv,
-								   double costmapOffsetX, double costmapOffsetY) :
-  costmapOffsetX(costmapOffsetX), costmapOffsetY(costmapOffsetY)
+//returns the stateid if success, and -1 otherwise
+int EnvironmentNavXYThetaLatFlourish::SetG(double x_m, double y_m, double theta_rad){
+  int x = CONTXY2DISC(x_m-costmapOffsetX, tMap.getResolution());
+  int y = CONTXY2DISC(y_m-costmapOffsetY, tMap.getResolution());
+  int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  ROS_INFO("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
+  ROS_INFO("map size: (%d %d)\n", tMap.size()(0), tMap.size()(1));
+
+  Eigen::Vector2i index(x,y);
+  if(!tMap.isInside(index)){
+    ROS_ERROR("ERROR: trying to set a goal cell %d %d that is outside of map\n", x,y);
+    return -1;
+  }
+
+  if(!IsValidConfiguration(x,y,theta)){
+    ROS_INFO("WARNING: goal configuration is invalid\n");
+  }
+
+  EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
+  if((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL){
+    //have to create a new entry
+    OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
+  }
+
+  //need to recompute start heuristics?
+  if(EnvNAVXYTHETALAT.goalstateid != OutHashEntry->stateID)
+    {
+      bNeedtoRecomputeStartHeuristics = true; //because termination condition may not plan all the way to the new goal
+      bNeedtoRecomputeGoalHeuristics = true; //because goal heuristics change
+    }
+
+
+
+  EnvNAVXYTHETALAT.goalstateid = OutHashEntry->stateID;
+
+  EnvNAVXYTHETALATCfg.EndX_c = x;
+  EnvNAVXYTHETALATCfg.EndY_c = y;
+  EnvNAVXYTHETALATCfg.EndTheta = theta;
+
+
+  return EnvNAVXYTHETALAT.goalstateid;    
+
+}
+
+bool EnvironmentNavXYThetaLatFlourish::IsValidCell(int X, int Y)
 {
-  // initialize traversableMap
-  Eigen::Vector2i size(200, 200);
-  double res = 0.2;
-  Eigen::Vector2f offset(0.f, 0.f);
-  tMap = Ais3dTools::TraversableMap(size, res, offset);
+  return (X >= 0 && X < EnvNAVXYTHETALATCfg.EnvWidth_c && 
+	  Y >= 0 && Y < EnvNAVXYTHETALATCfg.EnvHeight_c && 
+	  tMap.cell(X,Y).getElevation() < robotSafeHeight);
+}
 
-  for(size_t i = 0; i < size(0); i++){
-    for(size_t j = 0; j < size(1); j++){
-      tMap.cell(i,j).setElevation(0.f);
-      tMap.cell(i,j).setTraversable(true);
+bool EnvironmentNavXYThetaLatFlourish::IsWithinMapCell(int X, int Y)
+{
+  return (X >= 0 && X < EnvNAVXYTHETALATCfg.EnvWidth_c && 
+	  Y >= 0 && Y < EnvNAVXYTHETALATCfg.EnvHeight_c);
+}
+
+bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Theta)
+{
+  std::vector<sbpl_2Dcell_t> footprint;
+  sbpl_xy_theta_pt_t pose;
+
+  //compute continuous pose
+  pose.x = DISCXY2CONT(X, EnvNAVXYTHETALATCfg.cellsize_m);
+  pose.y = DISCXY2CONT(Y, EnvNAVXYTHETALATCfg.cellsize_m);
+  pose.theta = DiscTheta2Cont(Theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
+
+  //compute footprint cells
+  get_2d_footprint_cells(EnvNAVXYTHETALATCfg.FootprintPolygon, &footprint, pose, EnvNAVXYTHETALATCfg.cellsize_m);
+
+  //iterate over all footprint cells
+  for(int find = 0; find < (int)footprint.size(); find++){
+    int x = footprint.at(find).x;
+    int y = footprint.at(find).y;
+
+    if(!IsValidCell(x,y)){
+      return false;
     }
   }
 
-  for(size_t i = size(0)/2; i < size(0)/2+2; i++){
-    for(size_t j = size(1)/2; j < size(1); j++){
-      tMap.cell(i,j).setElevation(2.f);
-      tMap.cell(i,j).setTraversable(false);
-    }
-  }
-  tMap.computeDistanceMap();
+  return true;
+}
+
+EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap):
+  tMap(tMap)
+{
+
+  robotHeight = 1.2;
+  robotBodyHeight = 0.2; 
+  robotBodyWidth = 2.0; 
+  robotBodyLength = 2.0;
+  robotArmLength = 0.6;
+  robotMinSafeDistance = 0.1;
+  robotSafeHeight = robotHeight - robotMinSafeDistance;
+
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  costmapOffsetX = offset.x();
+  costmapOffsetY = offset.y();
+  
 
   tf::TransformListener tfListener;
   tf::StampedTransform rightFrontWheelToBaseLinkTransform, leftFrontWheelToBaseLinkTransform, rightRearWheelToBaseLinkTransform, leftRearWheelToBaseLinkTransform;
 
-  ros::Time now = ros::Time::now();
+  //ros::Time now = ros::Time::now();
 
   try{
     tfListener.waitForTransform("/wheel_fr_link",  "/base_link", 
@@ -91,13 +167,15 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   //update_planning_scene();
 
   planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
+  traversable_map_publisher = nhPriv.advertise<visualization_msgs::Marker>("travmap", 1, true); 
   pose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
 }
 
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double theta_rad)
 {
-  if(EnvironmentNAVXYTHETALAT::SetGoal(x_m, y_m, theta_rad) == -1)
+  // TODO if(EnvironmentNAVXYTHETALAT::SetGoal(x_m, y_m, theta_rad) == -1)
+  if(SetG(x_m, y_m, theta_rad) == -1)
     return -1;
 
   int x = CONTXY2DISC(x_m, EnvNAVXYTHETALATCfg.cellsize_m);
@@ -126,7 +204,7 @@ int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double th
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
   ROS_ASSERT(OutHashEntry != NULL);
 
-  std::cout << "number of actions: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
+  //std::cout << "number of actions: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
   /*TODO if (in_full_body_collision(OutHashEntry)) {
     SBPL_ERROR("ERROR: start state in collision\n", x, y);
     EnvNAVXYTHETALAT.startstateid = -1;
@@ -143,7 +221,7 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntr
   // Do this before, instead of after the call as exceptions will appear only after a StateID2CoordTable
   // entry was created, so that at least StateID2CoordTable and full_body_collision_infos are 
   // consistent.
-  full_body_collision_infos.push_back(FullBodyCollisionInfo());
+  //full_body_collision_infos.push_back(FullBodyCollisionInfo());
   EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_lookup(X, Y, Theta);
 
   return he;
@@ -151,7 +229,7 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntr
 
 EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntry_hash(int X, int Y, int Theta)
 {
-  full_body_collision_infos.push_back(FullBodyCollisionInfo());
+  //full_body_collision_infos.push_back(FullBodyCollisionInfo());
   EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_hash(X, Y, Theta);
 
   return he;
@@ -159,11 +237,6 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntr
 
 int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action)
 {
-  float robotHeight = 1.2;
-  float height = 0.2, width = 2.0, length = 2.0;
-  float armLength = 0.6;
-  float minSafeDistance = 0.1;
-  float safeHeight = robotHeight - minSafeDistance;
   int cost;
   sbpl_2Dcell_t cell;
   EnvNAVXYTHETALAT3Dcell_t interm3Dcell;
@@ -212,11 +285,11 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   // check if start and end position of the robot centre and the wheel cells are inside the map and the centre cell is not too high
   Eigen::Vector2i startIndex(SourceX, SourceY);
   Eigen::Vector2i endIndex(SourceX + action->dX, SourceY + action->dY);
-  if(!tMap.isInside(startIndex) || tMap.cell(SourceX, SourceY).getElevation() > safeHeight
+  if(!tMap.isInside(startIndex) || tMap.cell(SourceX, SourceY).getElevation() > robotSafeHeight
      || !tMap.isInside(rfWheelStartIndex) || !tMap.isInside(lfWheelStartIndex) 
      || !tMap.isInside(rrWheelStartIndex) || !tMap.isInside(lrWheelStartIndex))
     return INFINITECOST;
-  if(!tMap.isInside(endIndex) || tMap.cell(SourceX + action->dX, SourceY + action->dY).getElevation() > safeHeight
+  if(!tMap.isInside(endIndex) || tMap.cell(SourceX + action->dX, SourceY + action->dY).getElevation() > robotSafeHeight
      || !tMap.isInside(rfWheelEndIndex) || !tMap.isInside(lfWheelEndIndex) 
      || !tMap.isInside(rrWheelEndIndex) || !tMap.isInside(lrWheelEndIndex))
     return INFINITECOST;
@@ -249,7 +322,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
 
     // check if cell between start and end position os inside the map
     Eigen::Vector2i intermIndex(interm3Dcell.x, interm3Dcell.y);
-    if(!tMap.isInside(intermIndex) || tMap.cell(interm3Dcell.x, interm3Dcell.y).getElevation() > safeHeight
+    if(!tMap.isInside(intermIndex) || tMap.cell(interm3Dcell.x, interm3Dcell.y).getElevation() > robotSafeHeight
        || !tMap.isInside(rfWheelIntermIndex) || !tMap.isInside(lfWheelIntermIndex) 
        || !tMap.isInside(rrWheelIntermIndex) || !tMap.isInside(lrWheelIntermIndex)){
       return INFINITECOST;
@@ -283,7 +356,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
       
       //check validity
       Eigen::Vector2i interIndex(cell.x, cell.y);
-      if(!tMap.isInside(interIndex) || tMap.cell(cell.x, cell.y).getElevation() > safeHeight){
+      if(!tMap.isInside(interIndex) || tMap.cell(cell.x, cell.y).getElevation() > robotSafeHeight){
 	return INFINITECOST;
       }
     }
@@ -324,6 +397,85 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   */
 
 }
+
+
+// Initialize Configuration
+/*void EnvironmentNavXYThetaLatFlourish::SetConfiguration(int width, int height,
+						    const unsigned char* mapdata,
+						    int startx, int starty, int starttheta,
+						    int goalx, int goaly, int goaltheta,
+						    double cellsize_m, double nominalvel_mpersecs,
+						    double timetoturn45degsinplace_secs,
+						    const std::vector<sbpl_2Dpt_t> & robot_perimeterV)
+{
+  std::cout << "using new setConfiguration" << std::endl;
+  EnvNAVXYTHETALATCfg.EnvWidth_c = width;
+  EnvNAVXYTHETALATCfg.EnvHeight_c = height;
+  EnvNAVXYTHETALATCfg.StartX_c = startx;
+  EnvNAVXYTHETALATCfg.StartY_c = starty;
+  EnvNAVXYTHETALATCfg.StartTheta = starttheta;
+ 
+  if(EnvNAVXYTHETALATCfg.StartX_c < 0 || EnvNAVXYTHETALATCfg.StartX_c >= EnvNAVXYTHETALATCfg.EnvWidth_c) {
+    SBPL_ERROR("ERROR: illegal start coordinates\n");
+    throw new SBPL_Exception();
+  }
+  if(EnvNAVXYTHETALATCfg.StartY_c < 0 || EnvNAVXYTHETALATCfg.StartY_c >= EnvNAVXYTHETALATCfg.EnvHeight_c) {
+    SBPL_ERROR("ERROR: illegal start coordinates\n");
+    throw new SBPL_Exception();
+  }
+  if(EnvNAVXYTHETALATCfg.StartTheta < 0 || EnvNAVXYTHETALATCfg.StartTheta >= EnvNAVXYTHETALATCfg.NumThetaDirs) {
+    SBPL_ERROR("ERROR: illegal start coordinates for theta\n");
+    throw new SBPL_Exception();
+  }
+  
+  EnvNAVXYTHETALATCfg.EndX_c = goalx;
+  EnvNAVXYTHETALATCfg.EndY_c = goaly;
+  EnvNAVXYTHETALATCfg.EndTheta = goaltheta;
+
+  if(EnvNAVXYTHETALATCfg.EndX_c < 0 || EnvNAVXYTHETALATCfg.EndX_c >= EnvNAVXYTHETALATCfg.EnvWidth_c) {
+    SBPL_ERROR("ERROR: illegal goal coordinates\n");
+    throw new SBPL_Exception();
+  }
+  if(EnvNAVXYTHETALATCfg.EndY_c < 0 || EnvNAVXYTHETALATCfg.EndY_c >= EnvNAVXYTHETALATCfg.EnvHeight_c) {
+    SBPL_ERROR("ERROR: illegal goal coordinates\n");
+    throw new SBPL_Exception();
+  }
+  if(EnvNAVXYTHETALATCfg.EndTheta < 0 || EnvNAVXYTHETALATCfg.EndTheta >= EnvNAVXYTHETALATCfg.NumThetaDirs) {
+    SBPL_ERROR("ERROR: illegal goal coordinates for theta\n");
+    throw new SBPL_Exception();
+  }
+
+  // TODO
+  EnvNAVXYTHETALATCfg.FootprintPolygon = robot_perimeterV;
+
+  EnvNAVXYTHETALATCfg.nominalvel_mpersecs = nominalvel_mpersecs;
+  EnvNAVXYTHETALATCfg.cellsize_m = cellsize_m;
+  EnvNAVXYTHETALATCfg.timetoturn45degsinplace_secs = timetoturn45degsinplace_secs;
+
+
+  //allocate the 2D environment. Not used anymore -> Grid2D = NULL
+  EnvNAVXYTHETALATCfg.Grid2D = NULL;
+  /*new unsigned char* [EnvNAVXYTHETALATCfg.EnvWidth_c];
+  for (int x = 0; x < EnvNAVXYTHETALATCfg.EnvWidth_c; x++) {
+    EnvNAVXYTHETALATCfg.Grid2D[x] = new unsigned char [EnvNAVXYTHETALATCfg.EnvHeight_c];
+  }
+  
+  //environment:
+  if (0 == mapdata) {
+    for (int y = 0; y < EnvNAVXYTHETALATCfg.EnvHeight_c; y++) {
+      for (int x = 0; x < EnvNAVXYTHETALATCfg.EnvWidth_c; x++) {
+	EnvNAVXYTHETALATCfg.Grid2D[x][y] = 0;
+      }
+    }
+  }
+  else {
+    for (int y = 0; y < EnvNAVXYTHETALATCfg.EnvHeight_c; y++) {
+      for (int x = 0; x < EnvNAVXYTHETALATCfg.EnvWidth_c; x++) {
+	EnvNAVXYTHETALATCfg.Grid2D[x][y] = mapdata[x+y*width];
+      }
+    }
+    }*/
+//}
 
 
 // PlanningScene handling
@@ -393,6 +545,79 @@ void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
         }
     }
   pose_array_publisher.publish(msg);
+}
+
+void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
+  if(tMap.size()(0) == 0 || tMap.size()(1) == 0){
+    std::cerr << "Error: Traversable Map has size 0!" << std::endl;
+    return;
+  }
+
+  //TODO
+  planningFrameID = "odom";
+
+  visualization_msgs::Marker marker;
+  marker.header.frame_id = planningFrameID;
+  marker.header.stamp = ros::Time::now();
+  marker.ns = "traversability_map";
+  marker.id = 0;
+  marker.type = visualization_msgs::Marker::CUBE_LIST;
+  marker.action = visualization_msgs::Marker::ADD;
+  marker.pose.position.x = 0;
+  marker.pose.position.y = 0;
+  marker.pose.position.z = 0;
+  marker.pose.orientation.x = 0.0;
+  marker.pose.orientation.y = 0.0;
+  marker.pose.orientation.z = 0.0;
+  marker.pose.orientation.w = 1.0;
+    
+  float res = tMap.getResolution();
+  marker.scale.x = res;
+  marker.scale.y = res;
+  marker.scale.z = res;
+  marker.color.a = 1.0; 
+  marker.color.r = 0.0;
+  marker.color.g = 1.0;
+  marker.color.b = 0.0;
+
+  float minElevation = tMap.cell(0,0).getElevation();
+  float maxElevation = minElevation;
+  for(size_t i = 0; i < tMap.size()(0); i++){
+    for(size_t j = 0; j < tMap.size()(1); j++){
+      if(tMap.cell(i,j).getElevation() != -1000){
+	minElevation = std::min(minElevation, tMap.cell(i,j).getElevation());
+	maxElevation = std::max(maxElevation, tMap.cell(i,j).getElevation());
+      }
+    }
+  }
+  for(size_t i = 0; i < tMap.size()(0); i++){
+    for(size_t j = 0; j < tMap.size()(1); j++){
+      if(tMap.cell(i,j).getElevation() != -1000){
+	Eigen::Vector2i index(i,j);
+	geometry_msgs::Point p;
+	p.x = tMap.gridToWorld(index)(0);
+	p.y = tMap.gridToWorld(index)(1);
+	p.z = tMap.cell(i,j).getElevation();
+	marker.points.push_back(p);
+	std_msgs::ColorRGBA c;
+	if(tMap.cell(i,j).getTraversable()){
+	  c.r = 0;
+	  c.g = 0;
+	  //c.b = 0.2 + (tMap.cell(i,j).getElevation()-minElevation)*0.8f/(maxElevation-minElevation);
+	  c.b = 1-(tMap.cell(i,j).getElevation()-minElevation)/(maxElevation-minElevation);
+	  c.a = 1;
+	}else{
+	  c.r = 0.5;
+	  c.g = 0;
+	  c.b = 0;
+	  c.a = 1;
+	}
+	marker.colors.push_back(c);
+      }
+    }
+  }
+
+  traversable_map_publisher.publish(marker);
 }
 
 sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatFlourish::discreteToContinuous(int x, int y, int theta)

@@ -53,7 +53,7 @@ namespace flourish_planner
      * @param plan The plan... filled by the planner
      * @return True if a valid plan was found, false otherwise
      */
-    bool makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan);
+    //bool makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan);
 
     /**
      * @brief Given a goal pose in the world, compute a plan
