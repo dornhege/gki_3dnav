@@ -27,6 +27,11 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   bool IsValidCell(int X, int Y);
   bool IsWithinMapCell(int X, int Y);
   bool IsValidConfiguration(int X, int Y, int Theta);
+  void EnsureHeuristicsUpdated(bool bGoalHeuristics);
+  bool UpdateCost(int x, int y, unsigned char newcost);
+  bool IsObstacle(int x, int y);
+  unsigned char GetMapCost(int x, int y);
+  void ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath);
   int SetG(double x_m, double y_m, double theta_rad);
   bool tryToReadPrims(FILE* file){ return ReadMotionPrimitives(file); }
   EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap);
@@ -52,14 +57,15 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
 
  protected:
+  int GetCellCost(int X, int Y, int Theta);
   virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
-  /*virtual void SetConfiguration(int width, int height,
+  virtual void SetConfiguration(int width, int height,
 			const unsigned char* mapdata,
 			int startx, int starty, int starttheta,
 			int goalx, int goaly, int goaltheta,
 			double cellsize_m, double nominalvel_mpersecs,
 			double timetoturn45degsinplace_secs,
-			const std::vector<sbpl_2Dpt_t> & robot_perimeterV);*/
+			const std::vector<sbpl_2Dpt_t> & robot_perimeterV);
 
   struct FullBodyCollisionInfo
   {

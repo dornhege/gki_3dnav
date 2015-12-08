@@ -51,13 +51,10 @@ int EnvironmentNavXYThetaLatFlourish::SetG(double x_m, double y_m, double theta_
   }
 
   //need to recompute start heuristics?
-  if(EnvNAVXYTHETALAT.goalstateid != OutHashEntry->stateID)
-    {
-      bNeedtoRecomputeStartHeuristics = true; //because termination condition may not plan all the way to the new goal
-      bNeedtoRecomputeGoalHeuristics = true; //because goal heuristics change
-    }
-
-
+  if(EnvNAVXYTHETALAT.goalstateid != OutHashEntry->stateID){
+    bNeedtoRecomputeStartHeuristics = true; //because termination condition may not plan all the way to the new goal
+    bNeedtoRecomputeGoalHeuristics = true; //because goal heuristics change
+  }
 
   EnvNAVXYTHETALAT.goalstateid = OutHashEntry->stateID;
 
@@ -65,36 +62,31 @@ int EnvironmentNavXYThetaLatFlourish::SetG(double x_m, double y_m, double theta_
   EnvNAVXYTHETALATCfg.EndY_c = y;
   EnvNAVXYTHETALATCfg.EndTheta = theta;
 
-
   return EnvNAVXYTHETALAT.goalstateid;    
-
 }
 
-bool EnvironmentNavXYThetaLatFlourish::IsValidCell(int X, int Y)
-{
-  return (X >= 0 && X < EnvNAVXYTHETALATCfg.EnvWidth_c && 
-	  Y >= 0 && Y < EnvNAVXYTHETALATCfg.EnvHeight_c && 
+bool EnvironmentNavXYThetaLatFlourish::IsValidCell(int X, int Y){
+  Eigen::Vector2i index(X,Y);
+  return (tMap.isInside(index) &&
 	  tMap.cell(X,Y).getElevation() < robotSafeHeight);
 }
 
-bool EnvironmentNavXYThetaLatFlourish::IsWithinMapCell(int X, int Y)
-{
-  return (X >= 0 && X < EnvNAVXYTHETALATCfg.EnvWidth_c && 
-	  Y >= 0 && Y < EnvNAVXYTHETALATCfg.EnvHeight_c);
+bool EnvironmentNavXYThetaLatFlourish::IsWithinMapCell(int X, int Y){
+  Eigen::Vector2i index(X,Y);
+  return (tMap.isInside(index));
 }
 
-bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Theta)
-{
+bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Theta){
   std::vector<sbpl_2Dcell_t> footprint;
   sbpl_xy_theta_pt_t pose;
 
   //compute continuous pose
-  pose.x = DISCXY2CONT(X, EnvNAVXYTHETALATCfg.cellsize_m);
-  pose.y = DISCXY2CONT(Y, EnvNAVXYTHETALATCfg.cellsize_m);
+  pose.x = DISCXY2CONT(X, tMap.getResolution());
+  pose.y = DISCXY2CONT(Y, tMap.getResolution());
   pose.theta = DiscTheta2Cont(Theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
   //compute footprint cells
-  get_2d_footprint_cells(EnvNAVXYTHETALATCfg.FootprintPolygon, &footprint, pose, EnvNAVXYTHETALATCfg.cellsize_m);
+  get_2d_footprint_cells(EnvNAVXYTHETALATCfg.FootprintPolygon, &footprint, pose, tMap.getResolution());
 
   //iterate over all footprint cells
   for(int find = 0; find < (int)footprint.size(); find++){
@@ -107,6 +99,152 @@ bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Th
   }
 
   return true;
+}
+
+void EnvironmentNavXYThetaLatFlourish::EnsureHeuristicsUpdated(bool bGoalHeuristics){
+  std::cerr << "attempting to ensure heuristics are updated" << std::endl;
+
+  /*if(bNeedtoRecomputeStartHeuristics && !bGoalHeuristics){
+    grid2Dsearchfromstart->search(EnvNAVXYTHETALATCfg.Grid2D, EnvNAVXYTHETALATCfg.cost_inscribed_thresh, 
+				  EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c, EnvNAVXYTHETALATCfg.EndX_c, EnvNAVXYTHETALATCfg.EndY_c, 
+				  SBPL_2DGRIDSEARCH_TERM_CONDITION_TWOTIMESOPTPATH); 
+    bNeedtoRecomputeStartHeuristics = false;
+    SBPL_PRINTF("2dsolcost_infullunits=%d\n", (int)(grid2Dsearchfromstart->getlowerboundoncostfromstart_inmm(EnvNAVXYTHETALATCfg.EndX_c, EnvNAVXYTHETALATCfg.EndY_c)
+						    /EnvNAVXYTHETALATCfg.nominalvel_mpersecs));
+
+  }
+
+
+  if(bNeedtoRecomputeGoalHeuristics && bGoalHeuristics){
+    grid2Dsearchfromgoal->search(EnvNAVXYTHETALATCfg.Grid2D, EnvNAVXYTHETALATCfg.cost_inscribed_thresh, 
+				 EnvNAVXYTHETALATCfg.EndX_c, EnvNAVXYTHETALATCfg.EndY_c, EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c,  
+				 SBPL_2DGRIDSEARCH_TERM_CONDITION_TWOTIMESOPTPATH); 
+    bNeedtoRecomputeGoalHeuristics = false;
+    SBPL_PRINTF("2dsolcost_infullunits=%d\n", (int)(grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c)
+						    /EnvNAVXYTHETALATCfg.nominalvel_mpersecs));
+
+						    }*/
+}
+
+bool EnvironmentNavXYThetaLatFlourish::UpdateCost(int x, int y, unsigned char newcost)
+{
+#if DEBUG
+  //SBPL_FPRINTF(fDeb, "Cost updated for cell %d %d from old cost=%d to new cost=%d\n", x,y,EnvNAVXYTHETALATCfg.Grid2D[x][y], newcost);
+#endif
+
+  std::cerr << "attempting to update cost" << std::endl;
+
+  //EnvNAVXYTHETALATCfg.Grid2D[x][y] = newcost;
+  //
+  //bNeedtoRecomputeStartHeuristics = true;
+  //bNeedtoRecomputeGoalHeuristics = true;
+
+  return true;
+}
+
+bool EnvironmentNavXYThetaLatFlourish::IsObstacle(int x, int y){
+#if DEBUG
+  //SBPL_FPRINTF(fDeb, "Status of cell %d %d is queried. Its cost=%d\n", x,y,EnvNAVXYTHETALATCfg.Grid2D[x][y]);
+#endif
+  return tMap.cell(x,y).getTraversable(); 
+}
+
+unsigned char EnvironmentNavXYThetaLatFlourish::GetMapCost(int x, int y){
+  std::cerr << "attempting to get map cost" << std::endl;
+  return 0;
+}
+
+void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath){
+  std::vector<EnvNAVXYTHETALATAction_t*> actionV;
+  std::vector<int> CostV;
+  std::vector<int> SuccIDV;
+  int targetx_c, targety_c, targettheta_c;
+  int sourcex_c, sourcey_c, sourcetheta_c;
+
+  SBPL_PRINTF("checks=%ld\n", checks);
+
+  xythetaPath->clear();
+
+#if DEBUG
+  SBPL_FPRINTF(fDeb, "converting stateid path into coordinates:\n");
+#endif
+
+  for(int pind = 0; pind < (int)(stateIDPath->size())-1; pind++){
+    int sourceID = stateIDPath->at(pind);
+    int targetID = stateIDPath->at(pind+1);
+
+#if DEBUG
+    GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
+#endif
+
+
+    //get successors and pick the target via the cheapest action
+    SuccIDV.clear();
+    CostV.clear();
+    actionV.clear();
+    GetSuccs(sourceID, &SuccIDV, &CostV, &actionV);
+		
+    int bestcost = INFINITECOST;
+    int bestsind = -1;
+
+#if DEBUG
+    GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
+    GetCoordFromState(targetID, targetx_c, targety_c, targettheta_c);
+    SBPL_FPRINTF(fDeb, "looking for %d %d %d -> %d %d %d (numofsuccs=%d)\n", sourcex_c, sourcey_c, sourcetheta_c,
+		 targetx_c, targety_c, targettheta_c, (int)SuccIDV.size());
+
+#endif
+
+    for(int sind = 0; sind < (int)SuccIDV.size(); sind++){
+
+#if DEBUG
+      int x_c, y_c, theta_c;
+      GetCoordFromState(SuccIDV[sind], x_c, y_c, theta_c);
+      SBPL_FPRINTF(fDeb, "succ: %d %d %d\n", x_c, y_c, theta_c); 
+#endif
+
+      if(SuccIDV[sind] == targetID && CostV[sind] <= bestcost){
+	bestcost = CostV[sind];
+	bestsind = sind;
+      }
+    }
+    if(bestsind == -1){
+      SBPL_ERROR("ERROR: successor not found for transition:\n");
+      GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
+      GetCoordFromState(targetID, targetx_c, targety_c, targettheta_c);
+      SBPL_PRINTF("%d %d %d -> %d %d %d\n", sourcex_c, sourcey_c, sourcetheta_c,
+		  targetx_c, targety_c, targettheta_c); 
+      throw new SBPL_Exception();
+    }
+
+    //now push in the actual path
+    int sourcex_c, sourcey_c, sourcetheta_c;
+    GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
+    double sourcex, sourcey;
+    sourcex = DISCXY2CONT(sourcex_c, tMap.getResolution());
+    sourcey = DISCXY2CONT(sourcey_c, tMap.getResolution());
+      //TODO - when there are no motion primitives we should still print source state
+    for(int ipind = 0; ipind < ((int)actionV[bestsind]->intermptV.size())-1; ipind++){
+      //translate appropriately
+      sbpl_xy_theta_pt_t intermpt = actionV[bestsind]->intermptV[ipind];
+      intermpt.x += sourcex;
+      intermpt.y += sourcey;
+
+#if DEBUG
+      int nx = CONTXY2DISC(intermpt.x, tMap.getResolution());
+      int ny = CONTXY2DISC(intermpt.y, tMap.getResolution());
+      SBPL_FPRINTF(fDeb, "%.3f %.3f %.3f (%d %d %d cost=%d) ", 
+		   intermpt.x, intermpt.y, intermpt.theta, 
+		   nx, ny, 
+		   ContTheta2Disc(intermpt.theta, EnvNAVXYTHETALATCfg.NumThetaDirs), GetCellCost(nx, ny, intermpt.theta));//TODO
+	  if(ipind == 0) SBPL_FPRINTF(fDeb, "first (heur=%d)\n", GetStartHeuristic(sourceID));
+	  else SBPL_FPRINTF(fDeb, "\n");
+#endif
+
+	  //store
+	  xythetaPath->push_back(intermpt);
+	}
+    }
 }
 
 EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap):
@@ -214,8 +352,7 @@ int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double th
   return EnvNAVXYTHETALAT.startstateid;
 }
 
-EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntry_lookup(int X, int Y, int Theta)
-{
+EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntry_lookup(int X, int Y, int Theta){
   // the CreateNewHashEntry... functions always create a new entry, so we can assume that happens and
   // add the full_body_collision_infos entry now.
   // Do this before, instead of after the call as exceptions will appear only after a StateID2CoordTable
@@ -227,28 +364,67 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntr
   return he;
 }
 
-EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntry_hash(int X, int Y, int Theta)
-{
+EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntry_hash(int X, int Y, int Theta){
   //full_body_collision_infos.push_back(FullBodyCollisionInfo());
   EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_hash(X, Y, Theta);
 
   return he;
 }
 
-int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action)
-{
+int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
+  int theta = NORMALIZEDISCTHETA(Theta, NAVXYTHETALAT_THETADIRS);
+  sbpl_xy_theta_pt_t coords = discreteToContinuous(X, Y, Theta);
+  Eigen::Isometry3f baseTrafo = Eigen::Isometry3f::Identity();
+  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafo);
+
+  // TODO - check wheel cells
+  Eigen::Isometry3f rfWheelToGlobal = baseTrafo*rightFrontWheelToBaseLink;
+  Eigen::Isometry3f lfWheelToGlobal = baseTrafo*leftFrontWheelToBaseLink;
+  Eigen::Isometry3f rrWheelToGlobal = baseTrafo*rightRearWheelToBaseLink;
+  Eigen::Isometry3f lrWheelToGlobal = baseTrafo*leftRearWheelToBaseLink;
+  Eigen::Vector2f rfWheelCoordinates(rfWheelToGlobal.translation().x(), rfWheelToGlobal.translation().y());
+  Eigen::Vector2f lfWheelCoordinates(lfWheelToGlobal.translation().x(), lfWheelToGlobal.translation().y());
+  Eigen::Vector2f rrWheelCoordinates(rrWheelToGlobal.translation().x(), rrWheelToGlobal.translation().y());
+  Eigen::Vector2f lrWheelCoordinates(lrWheelToGlobal.translation().x(), lrWheelToGlobal.translation().y());
+  Eigen::Vector2i rfWheelIndex(tMap.worldToGrid(rfWheelCoordinates));
+  Eigen::Vector2i lfWheelIndex(tMap.worldToGrid(lfWheelCoordinates));
+  Eigen::Vector2i rrWheelIndex(tMap.worldToGrid(rrWheelCoordinates));
+  Eigen::Vector2i lrWheelIndex(tMap.worldToGrid(lrWheelCoordinates));
+
+  // check if position of the robot centre and the wheel cells are inside the map and the centre cell is not too high
+  Eigen::Vector2i index(X, Y);
+  if(!tMap.isInside(index) || tMap.cell(X, Y).getElevation() > robotSafeHeight
+     || !tMap.isInside(rfWheelIndex) || !tMap.isInside(lfWheelIndex) 
+     || !tMap.isInside(rrWheelIndex) || !tMap.isInside(lrWheelIndex))
+    return INFINITECOST;
+  
+  float cellcost = 1.f/tMap.cell(rfWheelIndex.x(), rfWheelIndex.y()).getDistToObstacle()
+      + 1.f/tMap.cell(lfWheelIndex.x(), lfWheelIndex.y()).getDistToObstacle()
+      + 1.f/tMap.cell(rrWheelIndex.x(), rrWheelIndex.y()).getDistToObstacle()
+      + 1.f/tMap.cell(lrWheelIndex.x(), lrWheelIndex.y()).getDistToObstacle();
+  return cellcost;
+}
+
+int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action){
   int cost;
   sbpl_2Dcell_t cell;
   EnvNAVXYTHETALAT3Dcell_t interm3Dcell;
   int i;
   
-  sbpl_xy_theta_pt_t coords = discreteToContinuous(SourceX, SourceY, SourceTheta);
+
+  float startcellcost = GetCellCost(SourceX, SourceY, SourceTheta);
+  float endcellcost = GetCellCost(SourceX+action->dX, SourceY+action->dY, action->endtheta);
+  
+  if(startcellcost == INFINITECOST || endcellcost == INFINITECOST){
+    return INFINITECOST;
+  }
+
+  /*sbpl_xy_theta_pt_t coords = discreteToContinuous(SourceX, SourceY, SourceTheta);
   //Eigen::Vector2i gridCoordinatesStart(SourceX, SourceY);
   //Eigen::Vector2f worldCoordinatesStart = tMap.gridToWorld(gridCoordinatesStart);
   Eigen::Isometry3f baseTrafoStart = Eigen::Isometry3f::Identity();
   Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafoStart);
 
-  // TODO - check wheel cells
   Eigen::Isometry3f rfWheelToGlobalStart = baseTrafoStart*rightFrontWheelToBaseLink;
   Eigen::Isometry3f lfWheelToGlobalStart = baseTrafoStart*leftFrontWheelToBaseLink;
   Eigen::Isometry3f rrWheelToGlobalStart = baseTrafoStart*rightRearWheelToBaseLink;
@@ -292,59 +468,27 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   if(!tMap.isInside(endIndex) || tMap.cell(SourceX + action->dX, SourceY + action->dY).getElevation() > robotSafeHeight
      || !tMap.isInside(rfWheelEndIndex) || !tMap.isInside(lfWheelEndIndex) 
      || !tMap.isInside(rrWheelEndIndex) || !tMap.isInside(lrWheelEndIndex))
-    return INFINITECOST;
+     return INFINITECOST;*/
   
   // iterate over discretized center cells and compute cost based on them
   //unsigned char maxcellcost = 0;
   float maxcellcost = 0;
   for(i = 0; i < (int)action->interm3DcellsV.size(); i++){
     interm3Dcell = action->interm3DcellsV.at(i);
-    int theta = NORMALIZEDISCTHETA(interm3Dcell.theta, NAVXYTHETALAT_THETADIRS);
-    coords = discreteToContinuous(interm3Dcell.x + SourceX, interm3Dcell.y + SourceY, theta);
-          
-    //Eigen::Vector2i gridCoordinatesInterm(SourceX+action->dX, SourceY+action->dY);
-    //Eigen::Vector2f worldCoordinatesInterm = tMap.gridToWorld(gridCoordinatesInterm);
-    Eigen::Isometry3f baseTrafoInterm = Eigen::Isometry3f::Identity();
-    Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafoInterm);
-
-    Eigen::Isometry3f rfWheelToGlobalInterm = baseTrafoInterm*rightFrontWheelToBaseLink;
-    Eigen::Isometry3f lfWheelToGlobalInterm = baseTrafoInterm*leftFrontWheelToBaseLink;
-    Eigen::Isometry3f rrWheelToGlobalInterm = baseTrafoInterm*rightRearWheelToBaseLink;
-    Eigen::Isometry3f lrWheelToGlobalInterm = baseTrafoInterm*leftRearWheelToBaseLink;
-    Eigen::Vector2f rfWheelIntermCoordinates(rfWheelToGlobalInterm.translation().x(), rfWheelToGlobalInterm.translation().y());
-    Eigen::Vector2f lfWheelIntermCoordinates(lfWheelToGlobalInterm.translation().x(), lfWheelToGlobalInterm.translation().y());
-    Eigen::Vector2f rrWheelIntermCoordinates(rrWheelToGlobalInterm.translation().x(), rrWheelToGlobalInterm.translation().y());
-    Eigen::Vector2f lrWheelIntermCoordinates(lrWheelToGlobalInterm.translation().x(), lrWheelToGlobalInterm.translation().y());
-    Eigen::Vector2i rfWheelIntermIndex(tMap.worldToGrid(rfWheelIntermCoordinates));
-    Eigen::Vector2i lfWheelIntermIndex(tMap.worldToGrid(lfWheelIntermCoordinates));
-    Eigen::Vector2i rrWheelIntermIndex(tMap.worldToGrid(rrWheelIntermCoordinates));
-    Eigen::Vector2i lrWheelIntermIndex(tMap.worldToGrid(lrWheelIntermCoordinates));
-
+    interm3Dcell.x = interm3Dcell.x + SourceX;
+    interm3Dcell.y = interm3Dcell.y + SourceY;
+    float intermCost = GetCellCost(interm3Dcell.x, interm3Dcell.y, interm3Dcell.theta);
     // check if cell between start and end position os inside the map
-    Eigen::Vector2i intermIndex(interm3Dcell.x, interm3Dcell.y);
-    if(!tMap.isInside(intermIndex) || tMap.cell(interm3Dcell.x, interm3Dcell.y).getElevation() > robotSafeHeight
-       || !tMap.isInside(rfWheelIntermIndex) || !tMap.isInside(lfWheelIntermIndex) 
-       || !tMap.isInside(rrWheelIntermIndex) || !tMap.isInside(lrWheelIntermIndex)){
+    if(intermCost == INFINITECOST){
       return INFINITECOST;
     }
     
-    // TODO - replace with cost from travmap
-    float cellcost = 1.f/tMap.cell(rfWheelIntermIndex.x(), rfWheelIntermIndex.y()).getDistToObstacle()
-      + 1.f/tMap.cell(lfWheelIntermIndex.x(), lfWheelIntermIndex.y()).getDistToObstacle()
-      + 1.f/tMap.cell(rrWheelIntermIndex.x(), rrWheelIntermIndex.y()).getDistToObstacle()
-      + 1.f/tMap.cell(lrWheelIntermIndex.x(), lrWheelIntermIndex.y()).getDistToObstacle();
-    maxcellcost = std::max(maxcellcost, cellcost);
-    //maxcellcost = __max(maxcellcost, EnvNAVXYTHETALATCfg.Grid2D[interm3Dcell.x][interm3Dcell.y]);
-      
-    //check that the robot is NOT in a cell at which there is no valid orientation, 
-    // i.e. there is an obstacle in the inner circle of the robot
-    if(maxcellcost >= EnvNAVXYTHETALATCfg.cost_inscribed_thresh)
-      return INFINITECOST;
+    maxcellcost = std::max(maxcellcost, intermCost);
   }
   
   //check collisions that for the particular footprint orientation along the action
   // if costs indicate possible obstacle between inner and outer circle of the robot
-  //TODO - use correct footprint
+  //TODO - use correct footprint, define a reasonable cost_possibly_circumscribed_thresh
   if(EnvNAVXYTHETALATCfg.FootprintPolygon.size() > 1 && (int)maxcellcost >= EnvNAVXYTHETALATCfg.cost_possibly_circumscribed_thresh){
     //checks++;
  
@@ -363,14 +507,6 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   }
  
   //to ensure consistency of h2D:
-  float startcellcost = 1.f/tMap.cell(rfWheelStartIndex.x(), rfWheelStartIndex.y()).getDistToObstacle()
-    + 1.f/tMap.cell(lfWheelStartIndex.x(), lfWheelStartIndex.y()).getDistToObstacle()
-    + 1.f/tMap.cell(rrWheelStartIndex.x(), rrWheelStartIndex.y()).getDistToObstacle()
-    + 1.f/tMap.cell(lrWheelStartIndex.x(), lrWheelStartIndex.y()).getDistToObstacle();
-  float endcellcost = 1.f/tMap.cell(rfWheelEndIndex.x(), rfWheelEndIndex.y()).getDistToObstacle()
-    + 1.f/tMap.cell(lfWheelEndIndex.x(), lfWheelEndIndex.y()).getDistToObstacle()
-    + 1.f/tMap.cell(rrWheelEndIndex.x(), rrWheelEndIndex.y()).getDistToObstacle()
-    + 1.f/tMap.cell(lrWheelEndIndex.x(), lrWheelEndIndex.y()).getDistToObstacle();
   maxcellcost = std::max(maxcellcost, startcellcost);
   int currentmaxcost = (int)std::max(maxcellcost, endcellcost);
  
@@ -400,7 +536,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
 
 
 // Initialize Configuration
-/*void EnvironmentNavXYThetaLatFlourish::SetConfiguration(int width, int height,
+void EnvironmentNavXYThetaLatFlourish::SetConfiguration(int width, int height,
 						    const unsigned char* mapdata,
 						    int startx, int starty, int starttheta,
 						    int goalx, int goaly, int goaltheta,
@@ -455,7 +591,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
 
   //allocate the 2D environment. Not used anymore -> Grid2D = NULL
   EnvNAVXYTHETALATCfg.Grid2D = NULL;
-  /*new unsigned char* [EnvNAVXYTHETALATCfg.EnvWidth_c];
+  /*EnvNAVXYTHETALATCfg.Grid2D = new unsigned char* [EnvNAVXYTHETALATCfg.EnvWidth_c];
   for (int x = 0; x < EnvNAVXYTHETALATCfg.EnvWidth_c; x++) {
     EnvNAVXYTHETALATCfg.Grid2D[x] = new unsigned char [EnvNAVXYTHETALATCfg.EnvHeight_c];
   }
@@ -475,7 +611,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
       }
     }
     }*/
-//}
+}
 
 
 // PlanningScene handling

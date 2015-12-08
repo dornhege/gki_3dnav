@@ -158,7 +158,7 @@ namespace flourish_planner{
 
 	// check if the costmap has an inflation layer
 	// Warning: footprint updates after initialization are not supported here
-	unsigned char cost_possibly_circumscribed_tresh = 0;
+	/*unsigned char cost_possibly_circumscribed_tresh = 0;
 	for (std::vector<boost::shared_ptr<costmap_2d::Layer> >::const_iterator layer = costmap_ros_->getLayeredCostmap()->getPlugins()->begin(); layer != costmap_ros_->getLayeredCostmap()->getPlugins()->end(); ++layer)
 	  {
 	    boost::shared_ptr<costmap_2d::InflationLayer> inflation_layer = boost::dynamic_pointer_cast<costmap_2d::InflationLayer>(*layer);
@@ -177,26 +177,22 @@ namespace flourish_planner{
 	  {
 	    ROS_ERROR("Failed to set cost_possibly_circumscribed_thresh parameter");
 	    exit(1);
-	  }
+	    }*/
 	int obst_cost_thresh = costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE);
 	vector<sbpl_2Dpt_t> perimeterptsV;
 	perimeterptsV.reserve(footprint.size());
-	for (size_t ii(0); ii < footprint.size(); ++ii)
-	  {
-	    sbpl_2Dpt_t pt;
-	    pt.x = footprint[ii].x;
-	    pt.y = footprint[ii].y;
-	    perimeterptsV.push_back(pt);
-	    std::cout << pt.x << "," << pt.y << " ";
-	  }
+	for (size_t ii(0); ii < footprint.size(); ++ii){
+	  sbpl_2Dpt_t pt;
+	  pt.x = footprint[ii].x;
+	  pt.y = footprint[ii].y;
+	  perimeterptsV.push_back(pt);
+	  std::cout << pt.x << "," << pt.y << " ";
+	}
 
 	bool ret;
-	std::cout << costmap_ros_->getCostmap()->getSizeInCellsX() << " " << // width
-	  costmap_ros_->getCostmap()->getSizeInCellsY() << " " << // height
-	  " " << costmap_ros_->getCostmap()->getResolution() << " " << nominalvel_mpersecs << " " << timetoturn45degsinplace_secs << " " << obst_cost_thresh << " " << primitive_filename_.c_str();
 	try
 	  {
-	    FILE* bla = fopen(primitive_filename_.c_str(), "r");
+	    /*FILE* bla = fopen(primitive_filename_.c_str(), "r");
 	    if(bla != NULL){
 	      if(env_->tryToReadPrims(bla) == false)
 		{
@@ -210,7 +206,7 @@ namespace flourish_planner{
 	      std::cout << "couldn't read file" << std::endl;
 	    }
 
-	    fclose(bla);
+	    fclose(bla);*/
 	    ret = env_->InitializeEnv(tMap.size()(0), // width
 				      tMap.size()(1), // height
 				      0, // mapdata
@@ -359,33 +355,29 @@ namespace flourish_planner{
     double theta_goal = 2 * atan2(goal.pose.orientation.z, goal.pose.orientation.w);
 
     planner_->force_planning_from_scratch();
-    try
-      {
-	int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
-	if (ret < 0 || planner_->set_start(ret) == 0)
-	  {
-	    ROS_ERROR("ERROR: failed to set start state\n");
-	    return false;
-	  }
-      } catch (SBPL_Exception& e)
-      {
-	ROS_ERROR("SBPL encountered a fatal exception while setting the start state");
-	return false;
-      }
+    try{
+      int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
+      if (ret < 0 || planner_->set_start(ret) == 0)
+	{
+	  ROS_ERROR("ERROR: failed to set start state\n");
+	  return false;
+	}
+    } catch (SBPL_Exception& e) {
+      ROS_ERROR("SBPL encountered a fatal exception while setting the start state");
+      return false;
+    }
 
-    try
-      {
-	int ret = env_->SetGoal(goal.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), goal.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_goal);
-	if (ret < 0 || planner_->set_goal(ret) == 0)
-	  {
-	    ROS_ERROR("ERROR: failed to set goal state\n");
-	    return false;
-	  }
-      } catch (SBPL_Exception& e)
-      {
-	ROS_ERROR("SBPL encountered a fatal exception while setting the goal state");
+    try{
+      int ret = env_->SetGoal(goal.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), goal.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_goal);
+      if (ret < 0 || planner_->set_goal(ret) == 0){
+	ROS_ERROR("ERROR: failed to set goal state\n");
 	return false;
       }
+    } catch (SBPL_Exception& e){
+      ROS_ERROR("SBPL encountered a fatal exception while setting the goal state");
+      return false;
+    }
+
     int offOnCount = 0;
     int onOffCount = 0;
     int allCount = 0;
@@ -405,16 +397,14 @@ namespace flourish_planner{
 	//first case - off cell goes on
 
 	if ((oldCost != costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE) && oldCost != costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE))
-	    && (newCost == costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE) || newCost == costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE)))
-	  {
-	    offOnCount++;
-	  }
+	    && (newCost == costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE) || newCost == costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE))){
+	  offOnCount++;
+	}
 
 	if ((oldCost == costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE) || oldCost == costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE))
-	    && (newCost != costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE) && newCost != costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE)))
-	  {
-	    onOffCount++;
-	  }
+	    && (newCost != costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE) && newCost != costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE))){
+	  onOffCount++;
+	}
 	env_->UpdateCost(ix, iy, costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy)));
 
 	nav2dcell_t nav2dcell;
