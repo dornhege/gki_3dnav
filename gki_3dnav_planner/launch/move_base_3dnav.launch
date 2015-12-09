@@ -9,6 +9,8 @@
     <param name="base_global_planner" value="gki_3dnav_planner/GKI3dNavPlanner" />
     <!--param name="GKI3dNavPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_base.mprim" /-->
     <param name="GKI3dNavPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_5cm_plussideways.mprim" />
+    <param name="GKI3dNavPlanner/freespace_heuristic_costmap" value="$(find gki_3dnav_planner)/config/pr2_5cm_plussideways.mprim_costmap.dat" />
+
     <rosparam file="$(find gki_3dnav_planner)/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
     <rosparam file="$(find gki_3dnav_planner)/config/costmap_common_params.yaml" command="load" ns="local_costmap" />
     <rosparam file="$(find gki_3dnav_planner)/config/local_costmap_params_close.yaml" command="load" />

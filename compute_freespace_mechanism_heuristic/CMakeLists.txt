@@ -103,11 +103,11 @@ link_directories(${SBPL_LIBRARY_DIRS})
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES freespace_mechanism_heuristic
-#  CATKIN_DEPENDS roscpp sbpl
-#  DEPENDS system_lib
-)
+    INCLUDE_DIRS include
+    LIBRARIES freespace_mechanism_heuristic
+    CATKIN_DEPENDS roscpp 
+    DEPENDS sbpl
+    )
 
 ###########
 ## Build ##

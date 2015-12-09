@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   #sbpl
   visualization_msgs
   interactive_markers
+  freespace_mechanism_heuristic
 )
 
 ## System dependencies are found with CMake's conventions

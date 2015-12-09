@@ -17,6 +17,15 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
 
     nhPriv.getParam("allowed_collision_links", allowed_collision_links);
 
+    std::string freespace_heuristic_costmap_file;
+    nhPriv.getParam("freespace_heuristic_costmap", freespace_heuristic_costmap_file);
+    if(freespace_heuristic_costmap_file.empty()) {
+        freespace_heuristic_costmap = NULL;
+    } else {
+        freespace_heuristic_costmap = new freespace_mechanism_heuristic::HeuristicCostMap(
+                freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapMaxCost);
+    }
+
     update_planning_scene();
 
     planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);

@@ -287,7 +287,7 @@ int main(int argc, char** argv)
         computeCosts(cfg, th, costmap);
     }
 
-    costmap.saveCostMap(mprims_file + "_costmaps.dat");
+    costmap.saveCostMap(mprims_file + "_costmap.dat");
 
     return 0;
 }
