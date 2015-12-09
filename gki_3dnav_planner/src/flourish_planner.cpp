@@ -53,19 +53,22 @@ namespace flourish_planner{
   class LatticeSCQ: public StateChangeQuery{
   public:
     LatticeSCQ(EnvironmentNavXYThetaLatFlourish* env, std::vector<nav2dcell_t> const & changedcellsV) :
-      env_(env), changedcellsV_(changedcellsV){
+      env_(env), changedcellsV_(changedcellsV)
+    {
     
     }
 
     // lazy init, because we do not always end up calling this method
-    virtual std::vector<int> const * getPredecessors() const{
+    virtual std::vector<int> const * getPredecessors() const
+    {
       if (predsOfChangedCells_.empty() && !changedcellsV_.empty())
 	env_->GetPredsofChangedEdges(&changedcellsV_, &predsOfChangedCells_);
       return &predsOfChangedCells_;
     }
 
     // lazy init, because we do not always end up calling this method
-    virtual std::vector<int> const * getSuccessors() const{
+    virtual std::vector<int> const * getSuccessors() const
+    {
       if (succsOfChangedCells_.empty() && !changedcellsV_.empty())
 	env_->GetSuccsofChangedEdges(&changedcellsV_, &succsOfChangedCells_);
       return &succsOfChangedCells_;
@@ -100,157 +103,147 @@ namespace flourish_planner{
 
   void FlourishPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros)
   {
-    if (!initialized_)
-      {
-	ros::NodeHandle private_nh("~/" + name);
-	ros::NodeHandle nh(name);
+    if (!initialized_){
+      ros::NodeHandle private_nh("~/" + name);
+      ros::NodeHandle nh(name);
 
-	ROS_INFO("Name is %s", name.c_str());
+      ROS_INFO("Name is %s", name.c_str());
 
-	private_nh.param("planner_type", planner_type_, string("ARAPlanner"));
-	private_nh.param("allocated_time", allocated_time_, 10.0);
-	private_nh.param("initial_epsilon", initial_epsilon_, 3.0);
-	private_nh.param("environment_type", environment_type_, string("XYThetaLattice"));
-	private_nh.param("forward_search", forward_search_, bool(false));
-	private_nh.param("primitive_filename", primitive_filename_, string(""));
-	private_nh.param("force_scratch_limit", force_scratch_limit_, 500);
+      private_nh.param("planner_type", planner_type_, string("ARAPlanner"));
+      private_nh.param("allocated_time", allocated_time_, 10.0);
+      private_nh.param("initial_epsilon", initial_epsilon_, 3.0);
+      private_nh.param("environment_type", environment_type_, string("XYThetaLattice"));
+      private_nh.param("forward_search", forward_search_, bool(false));
+      private_nh.param("primitive_filename", primitive_filename_, string(""));
+      private_nh.param("force_scratch_limit", force_scratch_limit_, 500);
 
-	double nominalvel_mpersecs, timetoturn45degsinplace_secs;
-	private_nh.param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
-	private_nh.param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
+      double nominalvel_mpersecs, timetoturn45degsinplace_secs;
+      private_nh.param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
+      private_nh.param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
 
-	int lethal_obstacle;
-	private_nh.param("lethal_obstacle", lethal_obstacle, 20);
-	lethal_obstacle_ = (unsigned char) lethal_obstacle;
-	inscribed_inflated_obstacle_ = lethal_obstacle_ - 1;
-	sbpl_cost_multiplier_ = (unsigned char) (costmap_2d::INSCRIBED_INFLATED_OBSTACLE / inscribed_inflated_obstacle_ + 1);
-	ROS_DEBUG("SBPL: lethal: %uz, inscribed inflated: %uz, multiplier: %uz", lethal_obstacle, inscribed_inflated_obstacle_, sbpl_cost_multiplier_);
+      int lethal_obstacle;
+      private_nh.param("lethal_obstacle", lethal_obstacle, 20);
+      lethal_obstacle_ = (unsigned char) lethal_obstacle;
+      inscribed_inflated_obstacle_ = lethal_obstacle_ - 1;
+      sbpl_cost_multiplier_ = (unsigned char) (costmap_2d::INSCRIBED_INFLATED_OBSTACLE / inscribed_inflated_obstacle_ + 1);
+      ROS_DEBUG("SBPL: lethal: %uz, inscribed inflated: %uz, multiplier: %uz", lethal_obstacle, inscribed_inflated_obstacle_, sbpl_cost_multiplier_);
 
-	costmap_ros_ = costmap_ros;
+      costmap_ros_ = costmap_ros;
 
-	std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
+      std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
 
 
-	// initialize traversableMap
-	// TODO: initialize stuff consistently (i.e. travmap and cfg)
-	Eigen::Vector2i size(400, 400);
-	double res = 0.025;
-	//TODO Eigen::Vector2f offset(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
-	Eigen::Vector2f offset(-5.f, -5.f);
-	Ais3dTools::TraversableMap tMap(size, res, offset);
+      // initialize traversableMap
+      // TODO: initialize stuff consistently (i.e. travmap and cfg)
+      Eigen::Vector2i size(400, 400);
+      double res = 0.025;
+      //TODO Eigen::Vector2f offset(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
+      Eigen::Vector2f offset(-5.f, -5.f);
+      Ais3dTools::TraversableMap tMap(size, res, offset);
 
-	for(size_t i = 0; i < size(0); i++){
-	  for(size_t j = 0; j < size(1); j++){
-	    tMap.cell(i,j).setElevation(0.f);
-	    tMap.cell(i,j).setTraversable(true);
-	  }
+      for(size_t i = 0; i < size(0); i++){
+	for(size_t j = 0; j < size(1); j++){
+	  tMap.cell(i,j).setElevation(0.f);
+	  tMap.cell(i,j).setTraversable(true);
 	}
+      }
 
-	/*for(size_t i = size(0)/2; i < size(0)/2+2; i++){
-	  for(size_t j = size(1)/2; j < size(1); j++){
-	    tMap.cell(i,j).setElevation(2.f);
-	    tMap.cell(i,j).setTraversable(false);
-	  }
-	  }*/
-	tMap.computeDistanceMap();
+      /*for(size_t i = size(0)/2; i < size(0)/2+2; i++){
+      for(size_t j = size(1)/2; j < size(1); j++){
+      tMap.cell(i,j).setElevation(2.f);
+      tMap.cell(i,j).setTraversable(false);
+    }
+    }*/
+      tMap.computeDistanceMap();
 
-	env_ = new EnvironmentNavXYThetaLatFlourish(private_nh, tMap);
+      env_ = new EnvironmentNavXYThetaLatFlourish(private_nh, tMap);
 
-	// check if the costmap has an inflation layer
-	// Warning: footprint updates after initialization are not supported here
-	/*unsigned char cost_possibly_circumscribed_tresh = 0;
+      // check if the costmap has an inflation layer
+      // Warning: footprint updates after initialization are not supported here
+      /*unsigned char cost_possibly_circumscribed_tresh = 0;
 	for (std::vector<boost::shared_ptr<costmap_2d::Layer> >::const_iterator layer = costmap_ros_->getLayeredCostmap()->getPlugins()->begin(); layer != costmap_ros_->getLayeredCostmap()->getPlugins()->end(); ++layer)
-	  {
-	    boost::shared_ptr<costmap_2d::InflationLayer> inflation_layer = boost::dynamic_pointer_cast<costmap_2d::InflationLayer>(*layer);
-	    if (!inflation_layer)
-	      continue;
+	{
+	boost::shared_ptr<costmap_2d::InflationLayer> inflation_layer = boost::dynamic_pointer_cast<costmap_2d::InflationLayer>(*layer);
+	if (!inflation_layer)
+	continue;
 
-	    cost_possibly_circumscribed_tresh = inflation_layer->computeCost(costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());
-	  }
+	cost_possibly_circumscribed_tresh = inflation_layer->computeCost(costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());
+	}
 
 	if (!env_->SetEnvParameter("cost_inscribed_thresh", costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE)))
-	  {
-	    ROS_ERROR("Failed to set cost_inscribed_thresh parameter");
-	    exit(1);
-	  }
-	if (!env_->SetEnvParameter("cost_possibly_circumscribed_thresh", costMapCostToSBPLCost(cost_possibly_circumscribed_tresh)))
-	  {
-	    ROS_ERROR("Failed to set cost_possibly_circumscribed_thresh parameter");
-	    exit(1);
-	    }*/
-	int obst_cost_thresh = costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE);
-	vector<sbpl_2Dpt_t> perimeterptsV;
-	perimeterptsV.reserve(footprint.size());
-	for (size_t ii(0); ii < footprint.size(); ++ii){
-	  sbpl_2Dpt_t pt;
-	  pt.x = footprint[ii].x;
-	  pt.y = footprint[ii].y;
-	  perimeterptsV.push_back(pt);
-	  std::cout << pt.x << "," << pt.y << " ";
+	{
+	ROS_ERROR("Failed to set cost_inscribed_thresh parameter");
+	exit(1);
 	}
-
-	bool ret;
-	try
-	  {
-	    /*FILE* bla = fopen(primitive_filename_.c_str(), "r");
-	    if(bla != NULL){
-	      if(env_->tryToReadPrims(bla) == false)
-		{
-		  SBPL_ERROR("ERROR: failed to read in motion primitive file\n");
-		  ROS_ERROR("sbpl exception");
-		}else{
-		ROS_ERROR("sbpl non exception");
-	      }
-	      std::cout << "read file" << std::endl;
-	    }else{
-	      std::cout << "couldn't read file" << std::endl;
-	    }
-
-	    fclose(bla);*/
-	    ret = env_->InitializeEnv(tMap.size()(0), // width
-				      tMap.size()(1), // height
-				      0, // mapdata
-				      0, 0, 0, // start (x, y, theta, t)
-				      0, 0, 0, // goal (x, y, theta)
-				      0, 0, 0, //goal tolerance
-				      perimeterptsV, costmap_ros_->getCostmap()->getResolution(), nominalvel_mpersecs, timetoturn45degsinplace_secs, obst_cost_thresh, primitive_filename_.c_str());
-	  } catch (SBPL_Exception* e)
-	  {
-
-	    ROS_ERROR("SBPL encountered a fatal exception! %s", e->what());
-	    ret = false;
-	  }
-	if (!ret)
-	  {
-	    ROS_ERROR("SBPL initialization failed!");
-	    exit(1);
-	  }
-	for (ssize_t ix(0); ix < costmap_ros_->getCostmap()->getSizeInCellsX(); ++ix)
-	  for (ssize_t iy(0); iy < costmap_ros_->getCostmap()->getSizeInCellsY(); ++iy)
-	    env_->UpdateCost(ix, iy, costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy)));
-
-	if ("ARAPlanner" == planner_type_)
-	  {
-	    ROS_INFO("Planning with ARA*");
-	    planner_ = new ARAPlanner(env_, forward_search_);
-	  }
-	else if ("ADPlanner" == planner_type_)
-	  {
-	    ROS_INFO("Planning with AD*");
-	    planner_ = new ADPlanner(env_, forward_search_);
-	  }
-	else
-	  {
-	    ROS_ERROR("ARAPlanner and ADPlanner are currently the only supported planners!\n");
-	    exit(1);
-	  }
-
-	ROS_INFO("[gki_3dnav_planner] Initialized successfully");
-	plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
-	//stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
-
-	initialized_ = true;
+	if (!env_->SetEnvParameter("cost_possibly_circumscribed_thresh", costMapCostToSBPLCost(cost_possibly_circumscribed_tresh)))
+	{
+	ROS_ERROR("Failed to set cost_possibly_circumscribed_thresh parameter");
+	exit(1);
+	}*/
+      int obst_cost_thresh = costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE);
+      vector<sbpl_2Dpt_t> perimeterptsV;
+      perimeterptsV.reserve(footprint.size());
+      for (size_t ii(0); ii < footprint.size(); ++ii){
+	sbpl_2Dpt_t pt;
+	pt.x = footprint[ii].x;
+	pt.y = footprint[ii].y;
+	perimeterptsV.push_back(pt);
+	std::cout << pt.x << "," << pt.y << " ";
       }
+
+      bool ret;
+      try{
+	/*FILE* bla = fopen(primitive_filename_.c_str(), "r");
+	  if(bla != NULL){
+	  if(env_->tryToReadPrims(bla) == false)
+	  {
+	  SBPL_ERROR("ERROR: failed to read in motion primitive file\n");
+	  ROS_ERROR("sbpl exception");
+	  }else{
+	  ROS_ERROR("sbpl non exception");
+	  }
+	  std::cout << "read file" << std::endl;
+	  }else{
+	  std::cout << "couldn't read file" << std::endl;
+	  }
+
+	  fclose(bla);*/
+	ret = env_->InitializeEnv(tMap.size()(0), // width
+				  tMap.size()(1), // height
+				  0, // mapdata
+				  0, 0, 0, // start (x, y, theta, t)
+				  0, 0, 0, // goal (x, y, theta)
+				  0, 0, 0, //goal tolerance
+				  perimeterptsV, costmap_ros_->getCostmap()->getResolution(), nominalvel_mpersecs, timetoturn45degsinplace_secs, obst_cost_thresh, primitive_filename_.c_str());
+      } catch (SBPL_Exception* e){
+	ROS_ERROR("SBPL encountered a fatal exception! %s", e->what());
+	ret = false;
+      }
+      if (!ret){
+	ROS_ERROR("SBPL initialization failed!");
+	exit(1);
+      }
+      //for (ssize_t ix(0); ix < costmap_ros_->getCostmap()->getSizeInCellsX(); ++ix)
+      //	for (ssize_t iy(0); iy < costmap_ros_->getCostmap()->getSizeInCellsY(); ++iy)
+      //	  env_->UpdateCost(ix, iy, costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy)));
+
+      if ("ARAPlanner" == planner_type_){
+	ROS_INFO("Planning with ARA*");
+	planner_ = new ARAPlanner(env_, forward_search_);
+      }else if ("ADPlanner" == planner_type_){
+	ROS_INFO("Planning with AD*");
+	planner_ = new ADPlanner(env_, forward_search_);
+      }else{
+	ROS_ERROR("ARAPlanner and ADPlanner are currently the only supported planners!\n");
+	exit(1);
+      }
+
+      ROS_INFO("[gki_3dnav_planner] Initialized successfully");
+      plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
+      //stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
+
+      initialized_ = true;
+    }
   }
 
   //Taken from Sachin's sbpl_cart_planner
@@ -291,19 +284,17 @@ namespace flourish_planner{
   bool FlourishPlanner::transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped)
   {
     planning_scene::PlanningSceneConstPtr scene = env_->getPlanningScene();
-    if (! scene->getTransforms().sameFrame(scene->getPlanningFrame(), stamped.header.frame_id))
-      {
-	if (! scene->getTransforms().canTransform(stamped.header.frame_id))
-	  {
-	    return false;
-	  }
-	Eigen::Affine3d original_goal;
-	tf::poseMsgToEigen(stamped.pose, original_goal);
-	Eigen::Affine3d map_goal;
-	scene->getTransforms().transformPose(stamped.header.frame_id, original_goal, map_goal);
-	tf::poseEigenToMsg(map_goal, stamped.pose);
-	stamped.header.frame_id = scene->getPlanningFrame();
+    if (! scene->getTransforms().sameFrame(scene->getPlanningFrame(), stamped.header.frame_id)){
+      if (! scene->getTransforms().canTransform(stamped.header.frame_id)){
+	return false;
       }
+      Eigen::Affine3d original_goal;
+      tf::poseMsgToEigen(stamped.pose, original_goal);
+      Eigen::Affine3d map_goal;
+      scene->getTransforms().transformPose(stamped.header.frame_id, original_goal, map_goal);
+      tf::poseEigenToMsg(map_goal, stamped.pose);
+      stamped.header.frame_id = scene->getPlanningFrame();
+    }
     return true;
   }
 
@@ -331,11 +322,10 @@ namespace flourish_planner{
 
   bool FlourishPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan)
   {
-    if (!initialized_)
-      {
-	ROS_ERROR("Global planner is not initialized");
-	return false;
-      }
+    if (!initialized_){
+      ROS_ERROR("Global planner is not initialized");
+      return false;
+    }
 
     env_->publish_traversable_map();
 
@@ -357,11 +347,11 @@ namespace flourish_planner{
     planner_->force_planning_from_scratch();
     try{
       int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
-      if (ret < 0 || planner_->set_start(ret) == 0)
-	{
-	  ROS_ERROR("ERROR: failed to set start state\n");
-	  return false;
-	}
+      std::cout << "planning from start " << start.pose.position.x << ", " << start.pose.position.y << std::endl;
+      if (ret < 0 || planner_->set_start(ret) == 0){
+	ROS_ERROR("ERROR: failed to set start state\n");
+	return false;
+      }
     } catch (SBPL_Exception& e) {
       ROS_ERROR("SBPL encountered a fatal exception while setting the start state");
       return false;
@@ -383,9 +373,8 @@ namespace flourish_planner{
     int allCount = 0;
     vector<nav2dcell_t> changedcellsV;
 
-    for (unsigned int ix = 0; ix < costmap_ros_->getCostmap()->getSizeInCellsX(); ix++){
+    /*for (unsigned int ix = 0; ix < costmap_ros_->getCostmap()->getSizeInCellsX(); ix++){
       for (unsigned int iy = 0; iy < costmap_ros_->getCostmap()->getSizeInCellsY(); iy++){
-
 	unsigned char oldCost = env_->GetMapCost(ix, iy);
 	unsigned char newCost = costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy));
 
@@ -405,24 +394,24 @@ namespace flourish_planner{
 	    && (newCost != costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE) && newCost != costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE))){
 	  onOffCount++;
 	}
-	env_->UpdateCost(ix, iy, costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy)));
+	//env_->UpdateCost(ix, iy, costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy)));
 
 	nav2dcell_t nav2dcell;
 	nav2dcell.x = ix;
 	nav2dcell.y = iy;
 	changedcellsV.push_back(nav2dcell);
       }
-    }
+      }*/
 
     try{
-      if (!changedcellsV.empty()){
+      /*if (!changedcellsV.empty()){
 	StateChangeQuery* scq = new LatticeSCQ(env_, changedcellsV);
 	planner_->costs_changed(*scq);
 	delete scq;
-      }
+	}*/
 
-      if (allCount > force_scratch_limit_)
-	planner_->force_planning_from_scratch();
+      //if (allCount > force_scratch_limit_)
+      planner_->force_planning_from_scratch();
     } catch (SBPL_Exception& e){
       ROS_ERROR("SBPL failed to update the costmap");
       return false;
@@ -436,40 +425,34 @@ namespace flourish_planner{
     ROS_DEBUG("[gki_3dnav_planner] run planner");
     vector<int> solution_stateIDs;
     int solution_cost;
-    try
-      {
-	int ret = planner_->replan(allocated_time_, &solution_stateIDs, &solution_cost);
-	if (ret)
-	  ROS_DEBUG("Solution is found\n");
-	else
-	  {
-	    ROS_INFO("Solution not found\n");
-	    publishStats(solution_cost, 0, start, goal);
-	    return false;
-	  }
-      } catch (SBPL_Exception& e)
-      {
-	ROS_ERROR("SBPL encountered a fatal exception while planning");
+    try{
+      int ret = planner_->replan(allocated_time_, &solution_stateIDs, &solution_cost);
+      if (ret)
+	ROS_DEBUG("Solution is found\n");
+      else{
+	ROS_INFO("Solution not found\n");
+	publishStats(solution_cost, 0, start, goal);
 	return false;
       }
+    } catch (SBPL_Exception& e){
+      ROS_ERROR("SBPL encountered a fatal exception while planning");
+      return false;
+    }
 
     ROS_DEBUG("size of solution=%d", (int )solution_stateIDs.size());
 
     vector<EnvNAVXYTHETALAT3Dpt_t> sbpl_path;
-    try
-      {
-	env_->ConvertStateIDPathintoXYThetaPath(&solution_stateIDs, &sbpl_path);
-      } catch (SBPL_Exception& e)
-      {
-	ROS_ERROR("SBPL encountered a fatal exception while reconstructing the path");
-	return false;
-      }
+    try{
+      env_->ConvertStateIDPathintoXYThetaPath(&solution_stateIDs, &sbpl_path);
+    } catch (SBPL_Exception& e){
+      ROS_ERROR("SBPL encountered a fatal exception while reconstructing the path");
+      return false;
+    }
     // if the plan has zero points, add a single point to make move_base happy
-    if (sbpl_path.size() == 0)
-      {
-	EnvNAVXYTHETALAT3Dpt_t s(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
-	sbpl_path.push_back(s);
-      }
+    if (sbpl_path.size() == 0){
+      EnvNAVXYTHETALAT3Dpt_t s(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
+      sbpl_path.push_back(s);
+    }
 
     ROS_DEBUG("Plan has %d points.\n", (int )sbpl_path.size());
     ros::Time plan_time = ros::Time::now();
@@ -480,32 +463,31 @@ namespace flourish_planner{
     gui_path.poses.resize(sbpl_path.size());
     gui_path.header.frame_id = costmap_ros_->getGlobalFrameID();
     gui_path.header.stamp = plan_time;
-    for (unsigned int i = 0; i < sbpl_path.size(); i++)
-      {
-	geometry_msgs::PoseStamped pose;
-	pose.header.stamp = plan_time;
-	pose.header.frame_id = costmap_ros_->getGlobalFrameID();
+    for (unsigned int i = 0; i < sbpl_path.size(); i++){
+      geometry_msgs::PoseStamped pose;
+      pose.header.stamp = plan_time;
+      pose.header.frame_id = costmap_ros_->getGlobalFrameID();
 
-	pose.pose.position.x = sbpl_path[i].x + costmap_ros_->getCostmap()->getOriginX();
-	pose.pose.position.y = sbpl_path[i].y + costmap_ros_->getCostmap()->getOriginY();
-	pose.pose.position.z = start.pose.position.z;
+      pose.pose.position.x = sbpl_path[i].x + costmap_ros_->getCostmap()->getOriginX();
+      pose.pose.position.y = sbpl_path[i].y + costmap_ros_->getCostmap()->getOriginY();
+      pose.pose.position.z = start.pose.position.z;
 
-	tf::Quaternion temp;
-	temp.setRPY(0, 0, sbpl_path[i].theta);
-	pose.pose.orientation.x = temp.getX();
-	pose.pose.orientation.y = temp.getY();
-	pose.pose.orientation.z = temp.getZ();
-	pose.pose.orientation.w = temp.getW();
+      tf::Quaternion temp;
+      temp.setRPY(0, 0, sbpl_path[i].theta);
+      pose.pose.orientation.x = temp.getX();
+      pose.pose.orientation.y = temp.getY();
+      pose.pose.orientation.z = temp.getZ();
+      pose.pose.orientation.w = temp.getW();
 
-	plan.push_back(pose);
+      plan.push_back(pose);
 
-	gui_path.poses[i] = plan[i];
-      }
+      gui_path.poses[i] = plan[i];
+    }
     plan_pub_.publish(gui_path);
     publishStats(solution_cost, sbpl_path.size(), start, goal);
 
     // DeBUG
-    env_->publish_expanded_states();
+    //env_->publish_expanded_states();
     return true;
   }
 }

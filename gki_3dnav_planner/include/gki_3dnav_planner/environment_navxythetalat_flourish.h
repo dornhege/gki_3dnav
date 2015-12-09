@@ -28,6 +28,8 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   bool IsWithinMapCell(int X, int Y);
   bool IsValidConfiguration(int X, int Y, int Theta);
   void EnsureHeuristicsUpdated(bool bGoalHeuristics);
+  int GetGoalHeuristic(int stateID);
+  int GetStartHeuristic(int stateID);
   bool UpdateCost(int x, int y, unsigned char newcost);
   bool IsObstacle(int x, int y);
   unsigned char GetMapCost(int x, int y);

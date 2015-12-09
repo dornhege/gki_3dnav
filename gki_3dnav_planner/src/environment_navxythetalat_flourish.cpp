@@ -28,39 +28,6 @@ Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
 
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatFlourish::SetG(double x_m, double y_m, double theta_rad){
-  int x = CONTXY2DISC(x_m-costmapOffsetX, tMap.getResolution());
-  int y = CONTXY2DISC(y_m-costmapOffsetY, tMap.getResolution());
-  int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
-  ROS_INFO("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
-  ROS_INFO("map size: (%d %d)\n", tMap.size()(0), tMap.size()(1));
-
-  Eigen::Vector2i index(x,y);
-  if(!tMap.isInside(index)){
-    ROS_ERROR("ERROR: trying to set a goal cell %d %d that is outside of map\n", x,y);
-    return -1;
-  }
-
-  if(!IsValidConfiguration(x,y,theta)){
-    ROS_INFO("WARNING: goal configuration is invalid\n");
-  }
-
-  EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-  if((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL){
-    //have to create a new entry
-    OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
-  }
-
-  //need to recompute start heuristics?
-  if(EnvNAVXYTHETALAT.goalstateid != OutHashEntry->stateID){
-    bNeedtoRecomputeStartHeuristics = true; //because termination condition may not plan all the way to the new goal
-    bNeedtoRecomputeGoalHeuristics = true; //because goal heuristics change
-  }
-
-  EnvNAVXYTHETALAT.goalstateid = OutHashEntry->stateID;
-
-  EnvNAVXYTHETALATCfg.EndX_c = x;
-  EnvNAVXYTHETALATCfg.EndY_c = y;
-  EnvNAVXYTHETALATCfg.EndTheta = theta;
 
   return EnvNAVXYTHETALAT.goalstateid;    
 }
@@ -81,12 +48,28 @@ bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Th
   sbpl_xy_theta_pt_t pose;
 
   //compute continuous pose
-  pose.x = DISCXY2CONT(X, tMap.getResolution());
-  pose.y = DISCXY2CONT(Y, tMap.getResolution());
+  Eigen::Vector2i index(X,Y);
+  Eigen::Vector2f pos = tMap.gridToWorld(index);
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  // hack because get_2d_footprint_cells doesn't use offset
+  pose.x = pos.x()-offset.x();
+  pose.y = pos.y()-offset.y();
   pose.theta = DiscTheta2Cont(Theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
   //compute footprint cells
   get_2d_footprint_cells(EnvNAVXYTHETALATCfg.FootprintPolygon, &footprint, pose, tMap.getResolution());
+  // hack because get_2d_footprint_cells doesn't use offset
+  pose.x = pos.x();
+  pose.y = pos.y();
+
+  /*std::cout << "footprint cells on pose " << pose.x << ", " << pose.y << std::endl;
+  for(int find = 0; find < (int)footprint.size(); find++){
+    int x = footprint.at(find).x;
+    int y = footprint.at(find).y;
+    std::cout << "(" << x << ", " << y << ") ";
+  }
+  std::cout << std::endl;*/
 
   //iterate over all footprint cells
   for(int find = 0; find < (int)footprint.size(); find++){
@@ -94,6 +77,11 @@ bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Th
     int y = footprint.at(find).y;
 
     if(!IsValidCell(x,y)){
+      std::cout << "invalid cell " << x << ", " << y 
+		<< " for footprint on pose " << pose.x << ", " << pose.y
+		<< ", cell " << X << ", " << Y
+		<< " offsetx " << costmapOffsetX
+		<< std::endl;
       return false;
     }
   }
@@ -126,6 +114,54 @@ void EnvironmentNavXYThetaLatFlourish::EnsureHeuristicsUpdated(bool bGoalHeurist
 						    }*/
 }
 
+int EnvironmentNavXYThetaLatFlourish::GetGoalHeuristic(int stateID)
+{
+#if USE_HEUR==0
+  return 0;
+#endif
+
+#if DEBUG
+  if(stateID >= (int)StateID2CoordTable.size()){
+    SBPL_ERROR("ERROR in EnvNAVXYTHETALAT... function: stateID illegal\n");
+    throw new SBPL_Exception();
+  }
+#endif
+
+  EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
+  //int h2D = grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(HashEntry->X, HashEntry->Y); //computes distances from start state that is grid2D, so it is EndX_c EndY_c 
+  int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM*EuclideanDistance_m(HashEntry->X, HashEntry->Y, EnvNAVXYTHETALATCfg.EndX_c, EnvNAVXYTHETALATCfg.EndY_c));
+
+  //define this function if it is used in the planner (heuristic backward search would use it)
+  //return (int)(((double)__max(h2D,hEuclid))/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
+  return (int)(((double)hEuclid)/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
+
+}
+
+
+int EnvironmentNavXYThetaLatFlourish::GetStartHeuristic(int stateID)
+{
+#if USE_HEUR==0
+  return 0;
+#endif
+
+#if DEBUG
+  if(stateID >= (int)StateID2CoordTable.size()){
+    SBPL_ERROR("ERROR in EnvNAVXYTHETALAT... function: stateID illegal\n");
+    throw new SBPL_Exception();
+  }
+#endif
+
+  EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
+  //int h2D = grid2Dsearchfromstart->getlowerboundoncostfromstart_inmm(HashEntry->X, HashEntry->Y);
+  int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM*EuclideanDistance_m(EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c, HashEntry->X, HashEntry->Y));
+
+  //define this function if it is used in the planner (heuristic backward search would use it)
+  //return (int)(((double)__max(h2D,hEuclid))/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
+  return (int)(((double)hEuclid)/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
+
+}
+
+
 bool EnvironmentNavXYThetaLatFlourish::UpdateCost(int x, int y, unsigned char newcost)
 {
 #if DEBUG
@@ -150,8 +186,8 @@ bool EnvironmentNavXYThetaLatFlourish::IsObstacle(int x, int y){
 }
 
 unsigned char EnvironmentNavXYThetaLatFlourish::GetMapCost(int x, int y){
-  std::cerr << "attempting to get map cost" << std::endl;
-  return 0;
+  //std::cerr << "attempting to get map cost" << std::endl;
+  return 1.f/tMap.cell(x,y).getDistToObstacle();
 }
 
 void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath){
@@ -220,31 +256,22 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
     //now push in the actual path
     int sourcex_c, sourcey_c, sourcetheta_c;
     GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
+    Eigen::Vector2i index(sourcex_c, sourcey_c);
+    Eigen::Vector2f pos = tMap.gridToWorld(index);
     double sourcex, sourcey;
-    sourcex = DISCXY2CONT(sourcex_c, tMap.getResolution());
-    sourcey = DISCXY2CONT(sourcey_c, tMap.getResolution());
-      //TODO - when there are no motion primitives we should still print source state
+    sourcex = pos.x();
+    sourcey = pos.y();
+    //TODO - when there are no motion primitives we should still print source state
     for(int ipind = 0; ipind < ((int)actionV[bestsind]->intermptV.size())-1; ipind++){
       //translate appropriately
       sbpl_xy_theta_pt_t intermpt = actionV[bestsind]->intermptV[ipind];
       intermpt.x += sourcex;
       intermpt.y += sourcey;
 
-#if DEBUG
-      int nx = CONTXY2DISC(intermpt.x, tMap.getResolution());
-      int ny = CONTXY2DISC(intermpt.y, tMap.getResolution());
-      SBPL_FPRINTF(fDeb, "%.3f %.3f %.3f (%d %d %d cost=%d) ", 
-		   intermpt.x, intermpt.y, intermpt.theta, 
-		   nx, ny, 
-		   ContTheta2Disc(intermpt.theta, EnvNAVXYTHETALATCfg.NumThetaDirs), GetCellCost(nx, ny, intermpt.theta));//TODO
-	  if(ipind == 0) SBPL_FPRINTF(fDeb, "first (heur=%d)\n", GetStartHeuristic(sourceID));
-	  else SBPL_FPRINTF(fDeb, "\n");
-#endif
-
-	  //store
-	  xythetaPath->push_back(intermpt);
-	}
+      //store
+      xythetaPath->push_back(intermpt);
     }
+  }
 }
 
 EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap):
@@ -312,20 +339,42 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double theta_rad)
 {
-  // TODO if(EnvironmentNAVXYTHETALAT::SetGoal(x_m, y_m, theta_rad) == -1)
-  if(SetG(x_m, y_m, theta_rad) == -1)
-    return -1;
-
-  int x = CONTXY2DISC(x_m, EnvNAVXYTHETALATCfg.cellsize_m);
-  int y = CONTXY2DISC(y_m, EnvNAVXYTHETALATCfg.cellsize_m);
+  Eigen::Vector2f pos(x_m, y_m);
+  Eigen::Vector2i index = tMap.worldToGrid(pos);
+  int x = index.x();
+  int y = index.y();
   int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
-  EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
-  ROS_ASSERT(OutHashEntry != NULL);   // should have been created by parent
-  /*TODO if(in_full_body_collision(OutHashEntry)) {
-    SBPL_ERROR("ERROR: goal state in collision\n", x, y);
+  ROS_INFO("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
+  ROS_INFO("map size: (%d %d)\n", tMap.size()(0), tMap.size()(1));
+
+  if(!tMap.isInside(index)){
+    ROS_ERROR("ERROR: trying to set a goal cell %d %d that is outside of map\n", x,y);
+    return -1;
+  }
+
+  if(!IsValidConfiguration(x,y,theta)){
+    ROS_ERROR("ERROR: goal state in collision or out of map \n", x, y);
     EnvNAVXYTHETALAT.goalstateid = -1;
     return -1;
-    }*/
+  }
+
+  EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
+  if((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL){
+    //have to create a new entry
+    OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
+  }
+
+  //need to recompute start heuristics?
+  if(EnvNAVXYTHETALAT.goalstateid != OutHashEntry->stateID){
+    bNeedtoRecomputeStartHeuristics = true; //because termination condition may not plan all the way to the new goal
+    bNeedtoRecomputeGoalHeuristics = true; //because goal heuristics change
+  }
+
+  EnvNAVXYTHETALAT.goalstateid = OutHashEntry->stateID;
+
+  EnvNAVXYTHETALATCfg.EndX_c = x;
+  EnvNAVXYTHETALATCfg.EndY_c = y;
+  EnvNAVXYTHETALATCfg.EndTheta = theta;
 
   return EnvNAVXYTHETALAT.goalstateid;
 }
@@ -333,15 +382,57 @@ int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double the
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double theta_rad)
 {
-  if(EnvironmentNAVXYTHETALAT::SetStart(x_m, y_m, theta_rad) == -1)
-    return -1;
-
-  int x = CONTXY2DISC(x_m, EnvNAVXYTHETALATCfg.cellsize_m);
-  int y = CONTXY2DISC(y_m, EnvNAVXYTHETALATCfg.cellsize_m);
+  Eigen::Vector2f pos(x_m, y_m);
+  Eigen::Vector2i index = tMap.worldToGrid(pos);
+  int x = index.x();
+  int y = index.y();
   int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
-  EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
-  ROS_ASSERT(OutHashEntry != NULL);
 
+  if(!IsWithinMapCell(x,y)){
+    ROS_ERROR("ERROR: trying to set a start cell %d %d that is outside of map\n", x,y);
+    return -1;
+  }
+
+  SBPL_PRINTF("env: setting start to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
+
+  if(!IsValidConfiguration(x,y,theta)){
+    ROS_ERROR("ERROR: start state in collision or out of map\n", x, y);
+    EnvNAVXYTHETALAT.startstateid = -1;
+    return -1;
+  }
+
+  EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
+  if((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL){
+    //have to create a new entry
+    OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
+  }
+
+  //need to recompute start heuristics?
+  if(EnvNAVXYTHETALAT.startstateid != OutHashEntry->stateID){
+    bNeedtoRecomputeStartHeuristics = true;
+    bNeedtoRecomputeGoalHeuristics = true; //because termination condition can be not all states TODO - make it dependent on term. condition
+  }
+
+  //set start
+  EnvNAVXYTHETALAT.startstateid = OutHashEntry->stateID;
+  EnvNAVXYTHETALATCfg.StartX_c = x;
+  EnvNAVXYTHETALATCfg.StartY_c = y;
+  EnvNAVXYTHETALATCfg.StartTheta = theta;
+
+  //if(EnvironmentNAVXYTHETALAT::SetStart(x_m, y_m, theta_rad) == -1)
+  //  return -1;
+
+  //int x = CONTXY2DISC(x_m, tMap.getResolution());
+  //int y = CONTXY2DISC(y_m, tMap.getResolution());
+  //int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  //EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
+  //ROS_ASSERT(OutHashEntry != NULL);
+
+  //if(!IsValidConfiguration(x,y,theta)){
+  //  ROS_ERROR("ERROR: start state in collision or out of map\n", x, y);
+  //  EnvNAVXYTHETALAT.startstateid = -1;
+  //  return -1;
+  //}
   //std::cout << "number of actions: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
   /*TODO if (in_full_body_collision(OutHashEntry)) {
     SBPL_ERROR("ERROR: start state in collision\n", x, y);
@@ -419,57 +510,6 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     return INFINITECOST;
   }
 
-  /*sbpl_xy_theta_pt_t coords = discreteToContinuous(SourceX, SourceY, SourceTheta);
-  //Eigen::Vector2i gridCoordinatesStart(SourceX, SourceY);
-  //Eigen::Vector2f worldCoordinatesStart = tMap.gridToWorld(gridCoordinatesStart);
-  Eigen::Isometry3f baseTrafoStart = Eigen::Isometry3f::Identity();
-  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafoStart);
-
-  Eigen::Isometry3f rfWheelToGlobalStart = baseTrafoStart*rightFrontWheelToBaseLink;
-  Eigen::Isometry3f lfWheelToGlobalStart = baseTrafoStart*leftFrontWheelToBaseLink;
-  Eigen::Isometry3f rrWheelToGlobalStart = baseTrafoStart*rightRearWheelToBaseLink;
-  Eigen::Isometry3f lrWheelToGlobalStart = baseTrafoStart*leftRearWheelToBaseLink;
-  Eigen::Vector2f rfWheelStartCoordinates(rfWheelToGlobalStart.translation().x(), rfWheelToGlobalStart.translation().y());
-  Eigen::Vector2f lfWheelStartCoordinates(lfWheelToGlobalStart.translation().x(), lfWheelToGlobalStart.translation().y());
-  Eigen::Vector2f rrWheelStartCoordinates(rrWheelToGlobalStart.translation().x(), rrWheelToGlobalStart.translation().y());
-  Eigen::Vector2f lrWheelStartCoordinates(lrWheelToGlobalStart.translation().x(), lrWheelToGlobalStart.translation().y());
-  Eigen::Vector2i rfWheelStartIndex(tMap.worldToGrid(rfWheelStartCoordinates));
-  Eigen::Vector2i lfWheelStartIndex(tMap.worldToGrid(lfWheelStartCoordinates));
-  Eigen::Vector2i rrWheelStartIndex(tMap.worldToGrid(rrWheelStartCoordinates));
-  Eigen::Vector2i lrWheelStartIndex(tMap.worldToGrid(lrWheelStartCoordinates));
-
-  //Eigen::Vector2i gridCoordinatesEnd(SourceX+action->dX, SourceY+action->dY);
-  //Eigen::Vector2f worldCoordinatesEnd = tMap.gridToWorld(gridCoordinatesEnd);
-  Eigen::Isometry3f baseTrafoEnd = Eigen::Isometry3f::Identity();
-  int endTheta = NORMALIZEDISCTHETA(action->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
-  coords = discreteToContinuous(SourceX+action->dX, SourceY+action->dY, endTheta);
-  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafoEnd);
-
-  Eigen::Isometry3f rfWheelToGlobalEnd = baseTrafoEnd*rightFrontWheelToBaseLink;
-  Eigen::Isometry3f lfWheelToGlobalEnd = baseTrafoEnd*leftFrontWheelToBaseLink;
-  Eigen::Isometry3f rrWheelToGlobalEnd = baseTrafoEnd*rightRearWheelToBaseLink;
-  Eigen::Isometry3f lrWheelToGlobalEnd = baseTrafoEnd*leftRearWheelToBaseLink;
-  Eigen::Vector2f rfWheelEndCoordinates(rfWheelToGlobalEnd.translation().x(), rfWheelToGlobalEnd.translation().y());
-  Eigen::Vector2f lfWheelEndCoordinates(lfWheelToGlobalEnd.translation().x(), lfWheelToGlobalEnd.translation().y());
-  Eigen::Vector2f rrWheelEndCoordinates(rrWheelToGlobalEnd.translation().x(), rrWheelToGlobalEnd.translation().y());
-  Eigen::Vector2f lrWheelEndCoordinates(lrWheelToGlobalEnd.translation().x(), lrWheelToGlobalEnd.translation().y());
-  Eigen::Vector2i rfWheelEndIndex(tMap.worldToGrid(rfWheelEndCoordinates));
-  Eigen::Vector2i lfWheelEndIndex(tMap.worldToGrid(lfWheelEndCoordinates));
-  Eigen::Vector2i rrWheelEndIndex(tMap.worldToGrid(rrWheelEndCoordinates));
-  Eigen::Vector2i lrWheelEndIndex(tMap.worldToGrid(lrWheelEndCoordinates));
-
-  // check if start and end position of the robot centre and the wheel cells are inside the map and the centre cell is not too high
-  Eigen::Vector2i startIndex(SourceX, SourceY);
-  Eigen::Vector2i endIndex(SourceX + action->dX, SourceY + action->dY);
-  if(!tMap.isInside(startIndex) || tMap.cell(SourceX, SourceY).getElevation() > robotSafeHeight
-     || !tMap.isInside(rfWheelStartIndex) || !tMap.isInside(lfWheelStartIndex) 
-     || !tMap.isInside(rrWheelStartIndex) || !tMap.isInside(lrWheelStartIndex))
-    return INFINITECOST;
-  if(!tMap.isInside(endIndex) || tMap.cell(SourceX + action->dX, SourceY + action->dY).getElevation() > robotSafeHeight
-     || !tMap.isInside(rfWheelEndIndex) || !tMap.isInside(lfWheelEndIndex) 
-     || !tMap.isInside(rrWheelEndIndex) || !tMap.isInside(lrWheelEndIndex))
-     return INFINITECOST;*/
-  
   // iterate over discretized center cells and compute cost based on them
   //unsigned char maxcellcost = 0;
   float maxcellcost = 0;
@@ -511,9 +551,8 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   int currentmaxcost = (int)std::max(maxcellcost, endcellcost);
  
   cost = action->cost*(currentmaxcost+1); //use cell cost as multiplicative factor
-  return cost;
-  // full body collision check
-  /*if(cost >= INFINITECOST)
+
+  if(cost >= INFINITECOST)
     return cost;
 
   // full body check to maybe disregard state
@@ -526,11 +565,10 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     // might have to create a end entry
     OutHashEntry = (this->*CreateNewHashEntry)(endX, endY, endTheta);
   }
-  if(in_full_body_collision(OutHashEntry))
-    return INFINITECOST;
-
+  //if(in_full_body_collision(OutHashEntry))
+  //  return INFINITECOST;
+  //
   return cost;
-  */
 
 }
 
@@ -666,20 +704,18 @@ void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
 {
   geometry_msgs::PoseArray msg;
   msg.header.frame_id = getPlanningScene()->getPlanningFrame();
-  for (size_t id = 0; id < full_body_collision_infos.size(); id++)
-    {
-      if (full_body_collision_infos[id].initialized && ! full_body_collision_infos[id].collision)
-        {
-	  EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
-	  sbpl_xy_theta_pt_t coords = discreteToContinuous(state->X, state->Y, state->Theta);
-	  msg.poses.push_back(geometry_msgs::Pose());
-	  geometry_msgs::Pose& pose = msg.poses.back();
-	  pose.position.x = coords.x + costmapOffsetX;
-	  pose.position.y = coords.y + costmapOffsetY;
-	  pose.position.z = 0;
-	  pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
-        }
+  for (size_t id = 0; id < full_body_collision_infos.size(); id++){
+    if (full_body_collision_infos[id].initialized && ! full_body_collision_infos[id].collision){
+      EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
+      sbpl_xy_theta_pt_t coords = discreteToContinuous(state->X, state->Y, state->Theta);
+      msg.poses.push_back(geometry_msgs::Pose());
+      geometry_msgs::Pose& pose = msg.poses.back();
+      pose.position.x = coords.x + costmapOffsetX;
+      pose.position.y = coords.y + costmapOffsetY;
+      pose.position.z = 0;
+      pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
     }
+  }
   pose_array_publisher.publish(msg);
 }
 
@@ -759,8 +795,10 @@ void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
 sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatFlourish::discreteToContinuous(int x, int y, int theta)
 {
   sbpl_xy_theta_pt_t pose;
-  pose.x = DISCXY2CONT(x, EnvNAVXYTHETALATCfg.cellsize_m);
-  pose.y = DISCXY2CONT(y, EnvNAVXYTHETALATCfg.cellsize_m);
+  Eigen::Vector2i index(x, y);
+  Eigen::Vector2f pos = tMap.gridToWorld(index);
+  pose.x = pos.x();
+  pose.y = pos.y();
   pose.theta = DiscTheta2Cont(theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
   return pose;
 }
