@@ -132,7 +132,7 @@ add_library(freespace_mechanism_heuristic
 
 ## Declare a C++ executable
 add_executable(compute_freespace_mechanism_heuristic src/compute_heuristic.cpp)
-target_link_libraries(compute_freespace_mechanism_heuristic ${SBPL_LIBRARIES} ${catkin_LIBRARIES})
+target_link_libraries(compute_freespace_mechanism_heuristic ${SBPL_LIBRARIES} ${catkin_LIBRARIES} freespace_mechanism_heuristic)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
