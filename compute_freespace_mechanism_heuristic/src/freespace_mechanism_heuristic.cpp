@@ -87,8 +87,9 @@ bool HeuristicCostMap::loadCostMap(const std::string & mapfile)
         for(unsigned int x = 0; x < width_; ++x) {
             for(unsigned int y = 0; y < height_; ++y) {
                 for(unsigned int th = 0; th < numThetaDirs_; ++th) {
-                    int cost = costmaps_[i][x][y][th];
+                    int cost;
                     f.read(reinterpret_cast<char*>(&cost), sizeof(int));
+                    costmaps_[i][x][y][th] = cost;
                 }
             }
         }

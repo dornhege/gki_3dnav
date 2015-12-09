@@ -39,6 +39,9 @@ class HeuristicCostMap
 
         void updateMaxCost();
 
+        unsigned int getHeight() const { return height_; }
+        unsigned int getWidth() const { return width_; }
+        unsigned int getNumThetaDirs() const { return numThetaDirs_; }
     protected:
         void allocateMaps();
         void deallocateMaps();
