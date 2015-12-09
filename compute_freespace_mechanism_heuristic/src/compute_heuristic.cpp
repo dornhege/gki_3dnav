@@ -8,11 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
-
-/**
- * TODO
- * write/safe heuristic
- */
+#include <assert.h>
 
 static int g_maxCost = INFINITECOST;
 
@@ -167,7 +163,7 @@ void updateMaxCost(const EnvNAVXYTHETALATConfig_t & cfg, unsigned int*** costmap
 }
 
 
-void saveCostmap(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int*** costmap, const std::string & filename)
+void saveCostmapImage(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int*** costmap, const std::string & filename)
 {
     std::ofstream f(filename.c_str());
     if(!f.good())
@@ -241,14 +237,14 @@ void computeCosts(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int*
                     ss.str("");
 
                     ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_" << countStr << "_"  << endTh << ".pgm";
-                    saveCostmap(cfg, th, costmap, ss.str());
+                    saveCostmapImage(cfg, th, costmap, ss.str());
                     ss.str("");
                 }
                 ss << std::setfill('0') << std::setw(6) << count;
                 std::string countStr = ss.str();
                 ss.str("");
                 ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_bestTh" << "_" << countStr << ".pgm";
-                saveCostmap(cfg, -1, costmap, ss.str());
+                saveCostmapImage(cfg, -1, costmap, ss.str());
 
                 count++;
                 if(count > 20) {
@@ -287,12 +283,40 @@ void computeCosts(const EnvNAVXYTHETALATConfig_t & cfg, int theta, unsigned int*
         ss.str("");
 
         ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_" << countStr << "_"  << endTh << ".pgm";
-        saveCostmap(cfg, th, costmap, ss.str());
+        saveCostmapImage(cfg, th, costmap, ss.str());
         ss.str("");
     }
     std::string countStr = "final";
     ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_bestTh" << "_" << countStr << ".pgm";
-    saveCostmap(cfg, -1, costmap, ss.str());
+    saveCostmapImage(cfg, -1, costmap, ss.str());
+}
+
+void saveCostmaps(const EnvNAVXYTHETALATConfig_t & cfg, const std::vector<unsigned int***> & costmaps)
+{
+    std::ofstream f("costmaps.dat", std::ios_base::binary);
+    if(!f.good()) {
+        fprintf(stderr, "Error saving costmaps to costmaps.dat");
+        return;
+    }
+
+    // header infos: sx, sy, num thetas
+    f.write(reinterpret_cast<const char*>(&cfg.EnvWidth_c), sizeof(int));
+    f.write(reinterpret_cast<const char*>(&cfg.EnvHeight_c), sizeof(int));
+    f.write(reinterpret_cast<const char*>(&cfg.NumThetaDirs), sizeof(int));
+    // Then one costmap per start theta
+    assert(costmaps.size() == cfg.NumThetaDirs);
+    for(unsigned int i = 0; i < costmaps.size(); ++i) {
+        // costmap is costs as int in x, y, endtheta
+        for(unsigned int x = 0; x < cfg.EnvWidth_c; ++x) {
+            for(unsigned int y = 0; y < cfg.EnvHeight_c; ++y) {
+                for(unsigned int th = 0; th < cfg.NumThetaDirs; ++th) {
+                    int cost = costmaps[i][x][y][th];
+                    f.write(reinterpret_cast<const char*>(&cost), sizeof(int));
+                }
+            }
+        }
+    }
+    f.close();
 }
 
 int main(int argc, char** argv)
@@ -356,6 +380,8 @@ int main(int argc, char** argv)
         g_maxCost = INFINITECOST;
         computeCosts(cfg, th, costmaps[th]);
     }
+
+    saveCostmaps(cfg, costmaps);
 
     return 0;
 }
