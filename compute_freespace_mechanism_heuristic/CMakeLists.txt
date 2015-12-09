@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(compute_freespace_mechanism_heuristic)
+project(freespace_mechanism_heuristic)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -104,7 +104,7 @@ link_directories(${SBPL_LIBRARY_DIRS})
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES compute_freespace_mechanism_heuristic
+#  LIBRARIES freespace_mechanism_heuristic
 #  CATKIN_DEPENDS roscpp sbpl
 #  DEPENDS system_lib
 )
@@ -115,20 +115,20 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-# include_directories(include)
+include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
-# add_library(compute_freespace_mechanism_heuristic
-#   src/${PROJECT_NAME}/compute_freespace_mechanism_heuristic.cpp
-# )
+add_library(freespace_mechanism_heuristic
+  src/freespace_mechanism_heuristic.cpp
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(compute_freespace_mechanism_heuristic ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# add_dependencies(freespace_mechanism_heuristic ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 add_executable(compute_freespace_mechanism_heuristic src/compute_heuristic.cpp)
