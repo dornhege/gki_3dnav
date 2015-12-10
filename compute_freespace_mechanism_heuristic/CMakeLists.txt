@@ -1,24 +1,11 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(gki_3dnav_planner)
+project(freespace_mechanism_heuristic)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  tf
-  tf_conversions
-  moveit_msgs
-  moveit_ros_planning_interface
-  nav_core
-  nav_msgs
-  std_msgs
-  std_srvs
-  #sbpl
-  visualization_msgs
-  interactive_markers
   roscpp
-  ais3dTools
-  freespace_mechanism_heuristic
 )
 
 ## System dependencies are found with CMake's conventions
@@ -29,8 +16,6 @@ pkg_check_modules(SBPL REQUIRED sbpl)
 include_directories(${SBPL_INCLUDE_DIRS})
 link_directories(${SBPL_LIBRARY_DIRS})
 
-include_directories(SYSTEM ${Boost_INCLUDE_DIR} ${EIGEN_INCLUDE_DIRS})
-include_directories(${catkin_INCLUDE_DIRS})
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -46,10 +31,10 @@ include_directories(${catkin_INCLUDE_DIRS})
 ## * Let MSG_DEP_SET be the set of packages whose message types you use in
 ##   your messages/services/actions (e.g. std_msgs, actionlib_msgs, ...).
 ## * In the file package.xml:
+##   * add a build_depend tag for "message_generation"
 ##   * add a build_depend and a run_depend tag for each package in MSG_DEP_SET
-##   * If MSG_DEP_SET isn't empty the following dependencies might have been
-##     pulled in transitively but can be declared for certainty nonetheless:
-##     * add a build_depend tag for "message_generation"
+##   * If MSG_DEP_SET isn't empty the following dependency has been pulled in
+##     but can be declared for certainty nonetheless:
 ##     * add a run_depend tag for "message_runtime"
 ## * In this file (CMakeLists.txt):
 ##   * add "message_generation" and every package in MSG_DEP_SET to
@@ -85,7 +70,27 @@ include_directories(${catkin_INCLUDE_DIRS})
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   moveit_msgs#   nav_msgs#   std_msgs#   visualization_msgs
+#   std_msgs  # Or other packages containing msgs
+# )
+
+################################################
+## Declare ROS dynamic reconfigure parameters ##
+################################################
+
+## To declare and build dynamic reconfigure parameters within this
+## package, follow these steps:
+## * In the file package.xml:
+##   * add a build_depend and a run_depend tag for "dynamic_reconfigure"
+## * In this file (CMakeLists.txt):
+##   * add "dynamic_reconfigure" to
+##     find_package(catkin REQUIRED COMPONENTS ...)
+##   * uncomment the "generate_dynamic_reconfigure_options" section below
+##     and list every .cfg file to be processed
+
+## Generate dynamic reconfigure parameters in the 'cfg' folder
+# generate_dynamic_reconfigure_options(
+#   cfg/DynReconf1.cfg
+#   cfg/DynReconf2.cfg
 # )
 
 ###################################
@@ -98,11 +103,11 @@ include_directories(${catkin_INCLUDE_DIRS})
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES gki_3dnav_planner flourish_planner
-  CATKIN_DEPENDS moveit_msgs nav_core nav_msgs std_msgs std_srvs visualization_msgs
-  DEPENDS system_lib
-)
+    INCLUDE_DIRS include
+    LIBRARIES freespace_mechanism_heuristic
+    CATKIN_DEPENDS roscpp 
+    DEPENDS sbpl
+    )
 
 ###########
 ## Build ##
@@ -114,45 +119,32 @@ include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
 )
-add_definitions(${EIGEN_DEFINITIONS})
 
-## Declare a cpp library
-add_library(gki_3dnav_planner
-    src/environment_xyt_3d_collisions.cpp
-    src/environment_navxythetalat_moveit.cpp
-    src/3dnav_planner.cpp
+## Declare a C++ library
+add_library(freespace_mechanism_heuristic
+  src/freespace_mechanism_heuristic.cpp
 )
 
-add_library(flourish_planner
-    src/environment_xyt_3d_collisions.cpp
-    src/environment_navxythetalat_flourish.cpp
-    src/flourish_planner.cpp
-)
+## Add cmake target dependencies of the library
+## as an example, code may need to be generated before libraries
+## either from message generation or dynamic reconfigure
+# add_dependencies(freespace_mechanism_heuristic ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-## Declare a cpp executable
-add_executable(visual_path_planning_node src/VisualPathPlannerNode.cpp)
+## Declare a C++ executable
+add_executable(compute_freespace_mechanism_heuristic src/compute_heuristic.cpp)
+target_link_libraries(compute_freespace_mechanism_heuristic ${SBPL_LIBRARIES} ${catkin_LIBRARIES} freespace_mechanism_heuristic)
 
-## Add cmake target dependencies of the executable/library
-## as an example, message headers may need to be generated before nodes
-# add_dependencies(gki_3dnav_planner_node gki_3dnav_planner_generate_messages_cpp)
-#add_dependencies(visual_path_planning_node full_body_nav_msgs_generate_messages_cpp)
+add_executable(print_costmap_images src/print_costmap_images.cpp)
+target_link_libraries(print_costmap_images ${SBPL_LIBRARIES} freespace_mechanism_heuristic)
+
+## Add cmake target dependencies of the executable
+## same as for the library above
+# add_dependencies(compute_freespace_mechanism_heuristic_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(gki_3dnav_planner
-	${catkin_LIBRARIES}
-	${SBPL_LIBRARIES} 
-	${Boost_LIBRARIES}
-)
-target_link_libraries(flourish_planner
-	${catkin_LIBRARIES}
-	${SBPL_LIBRARIES} 
-	${Boost_LIBRARIES}
-)
-target_link_libraries(visual_path_planning_node
-	${catkin_LIBRARIES}
-	${Boost_LIBRARIES}
-)
-
+# target_link_libraries(compute_freespace_mechanism_heuristic_node
+#   ${catkin_LIBRARIES}
+# )
 
 #############
 ## Install ##
@@ -169,7 +161,7 @@ target_link_libraries(visual_path_planning_node
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS gki_3dnav_planner gki_3dnav_planner_node
+# install(TARGETS compute_freespace_mechanism_heuristic compute_freespace_mechanism_heuristic_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -194,7 +186,7 @@ target_link_libraries(visual_path_planning_node
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_gki_3dnav_planner.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_compute_freespace_mechanism_heuristic.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

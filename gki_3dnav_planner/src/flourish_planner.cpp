@@ -135,7 +135,7 @@ namespace flourish_planner{
 
       // initialize traversableMap
       // TODO: initialize stuff consistently (i.e. travmap and cfg)
-      Eigen::Vector2i size(400, 400);
+      Eigen::Vector2i size(800, 800);
       double res = 0.025;
       //TODO Eigen::Vector2f offset(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
       Eigen::Vector2f offset(-5.f, -5.f);
@@ -148,12 +148,12 @@ namespace flourish_planner{
 	}
       }
 
-      /*for(size_t i = size(0)/2; i < size(0)/2+2; i++){
-      for(size_t j = size(1)/2; j < size(1); j++){
-      tMap.cell(i,j).setElevation(2.f);
-      tMap.cell(i,j).setTraversable(false);
-    }
-    }*/
+      for(size_t i = size(0)/2; i < size(0)/2+2; i++){
+	for(size_t j = 0; j < size(1)/2; j++){
+	  tMap.cell(i,j).setElevation(2.f);
+	  tMap.cell(i,j).setTraversable(false);
+	}
+      }
       tMap.computeDistanceMap();
 
       env_ = new EnvironmentNavXYThetaLatFlourish(private_nh, tMap);

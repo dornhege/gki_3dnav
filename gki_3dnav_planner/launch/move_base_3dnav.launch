@@ -1,5 +1,6 @@
 <launch>
-  <arg name="debug" default="false" />  
+  <arg name="debug" default="false" />
+
   <arg unless="$(arg debug)" name="launch_prefix" value="" />
   <arg     if="$(arg debug)" name="launch_prefix" value="xterm -e gdb --args" />
 
@@ -13,7 +14,7 @@
     <param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_sbpl.mprim" />
     <!-- param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_base.mprim" -->
     <!--param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_5cm_plussideways.mprim" /-->
-    <rosparam file="$(find gki_3dnav_planner)/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
+
     <rosparam file="$(find gki_3dnav_planner)/config/costmap_common_params.yaml" command="load" ns="local_costmap" />
     <rosparam file="$(find gki_3dnav_planner)/config/local_costmap_params_close.yaml" command="load" />
     <rosparam file="$(find gki_3dnav_planner)/config/global_costmap_params.yaml" command="load" />

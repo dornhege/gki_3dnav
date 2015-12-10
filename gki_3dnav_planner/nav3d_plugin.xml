@@ -1,4 +1,4 @@
-<library path="lib/libflourish_planner_rd">
+<library path="lib/libflourish_planner">
   <class name="flourish_planner/FlourishPlanner" type="flourish_planner::FlourishPlanner" base_class_type="nav_core::BaseGlobalPlanner">
     <description>
       An implementation of a search-based planning using anytime a* and a lattice graph with 2.5d collision checking

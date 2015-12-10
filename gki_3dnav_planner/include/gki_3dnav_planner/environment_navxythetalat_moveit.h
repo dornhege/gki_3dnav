@@ -7,6 +7,7 @@
 #include <ros/ros.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+#include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 
 // TODO
 // Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target
@@ -59,7 +60,7 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
             }
         };
         std::vector<FullBodyCollisionInfo> full_body_collision_infos;
-
+        freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
 
         planning_scene::PlanningScenePtr scene;
         planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
