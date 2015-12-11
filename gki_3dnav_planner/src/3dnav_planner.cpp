@@ -290,7 +290,22 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 	env_->clear_full_body_collision_infos();
 	env_->update_planning_scene();
 	env_->publish_planning_scene();
-	return makePlan_(start, goal, plan);
+    env_->useFreespaceHeuristic(true);
+    env_->count = 0;
+    env_->past = 0;
+    bool planOK = makePlan_(start, goal, plan);
+
+    env_->useFreespaceHeuristic(false);
+    std::vector<geometry_msgs::PoseStamped> plan2;
+    env_->count = 0;
+    env_->past = 0;
+    bool plan2OK = makePlan_(start, goal, plan2);
+
+    if(!planOK && plan2OK) {
+        plan = plan2;
+        return plan2OK;
+    }
+    return planOK;
 }
 
 bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan)
@@ -315,10 +330,12 @@ bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs:
 	double theta_start = 2 * atan2(start.pose.orientation.z, start.pose.orientation.w);
 	double theta_goal = 2 * atan2(goal.pose.orientation.z, goal.pose.orientation.w);
 
+    int startId = 0;
 	planner_->force_planning_from_scratch();
 	try
 	{
 		int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
+        startId = ret;
 		if (ret < 0 || planner_->set_start(ret) == 0)
 		{
 			ROS_ERROR("ERROR: failed to set start state\n");
@@ -343,6 +360,8 @@ bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs:
 		ROS_ERROR("SBPL encountered a fatal exception while setting the goal state");
 		return false;
 	}
+
+    ROS_INFO("Start state Heur: %d", env_->GetGoalHeuristic(startId));
 
 	int offOnCount = 0;
 	int onOffCount = 0;

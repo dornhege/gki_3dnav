@@ -3,6 +3,7 @@
 #include <sbpl/utils/mdp.h>
 #include <sbpl/utils/key.h>
 #include <sbpl/planners/planner.h>
+#include <sbpl/utils/2Dgridsearch.h>
 #include <moveit/move_group/capability_names.h>
 
 #include <boost/foreach.hpp>
@@ -218,5 +219,100 @@ const EnvironmentNavXYThetaLatMoveit::FullBodyCollisionInfo& EnvironmentNavXYThe
         //        pose.theta, full_body_collision_infos[state->stateID].collision);
     }
     return full_body_collision_infos[state->stateID];
+}
+
+int EnvironmentNavXYThetaLatMoveit::GetFromToHeuristic(int FromStateID, int ToStateID)
+{
+    int heur = EnvironmentNAVXYTHETALAT::GetFromToHeuristic(FromStateID, ToStateID);
+
+    EnvNAVXYTHETALATHashEntry_t* FromHashEntry = StateID2CoordTable[FromStateID];
+    EnvNAVXYTHETALATHashEntry_t* ToHashEntry = StateID2CoordTable[ToStateID];
+
+    int dx = ToHashEntry->X - FromHashEntry->X;
+    int dy = ToHashEntry->Y - FromHashEntry->Y;
+
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
+        hfs = freespace_heuristic_costmap->getCost(dx, dy, FromHashEntry->Theta, ToHashEntry->Theta);
+
+    count++;
+    if(count % 1000 == 0) {
+        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
+                hfs, heur,
+                count, past, count - past, (double)(count-past)/count*100.0);
+    }
+    if(hfs > heur)
+        return hfs;
+    past++;
+    return heur;
+}
+
+int EnvironmentNavXYThetaLatMoveit::GetStartHeuristic(int stateID)
+{
+    int heur = EnvironmentNAVXYTHETALAT::GetStartHeuristic(stateID);
+
+    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
+    int dx = EnvNAVXYTHETALATCfg.StartX_c - HashEntry->X;
+    int dy = EnvNAVXYTHETALATCfg.StartY_c - HashEntry->Y;
+    dx = -dx;   // FIXME this is supposed to be FROM start TO stateID, not vice versa
+    dy = -dy;
+    int endTh = HashEntry->Theta;
+
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
+        hfs = freespace_heuristic_costmap->getCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
+
+    count++;
+    if(count % 1000 == 0) {
+        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
+                hfs, heur,
+                count, past, count - past, (double)(count-past)/count*100.0);
+    }
+    if(hfs > heur)
+        return hfs;
+    past++;
+    return heur;
+}
+
+int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
+{
+#if USE_HEUR==0
+    return 0;
+#endif
+
+#if DEBUG
+    if (stateID >= (int)StateID2CoordTable.size()) {
+        SBPL_ERROR("ERROR in EnvNAVXYTHETALAT... function: stateID illegal\n");
+        throw new SBPL_Exception();
+    }
+#endif
+
+    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
+    //computes distances from start state that is grid2D, so it is EndX_c EndY_c
+    int h2D = grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(HashEntry->X, HashEntry->Y); 
+    int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM * EuclideanDistance_m(HashEntry->X, HashEntry->Y,
+                EnvNAVXYTHETALATCfg.EndX_c,
+                EnvNAVXYTHETALATCfg.EndY_c));
+    //define this function if it is used in the planner (heuristic backward search would use it)
+    int heur = (int)(((double)__max(h2D, hEuclid)) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs);
+
+    int dx = EnvNAVXYTHETALATCfg.EndX_c - HashEntry->X;
+    int dy = EnvNAVXYTHETALATCfg.EndY_c - HashEntry->Y;
+    int startTh = HashEntry->Theta;
+
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
+        hfs = freespace_heuristic_costmap->getCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
+
+    count++;
+    if(count % 1000 == 0) {
+        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
+                hfs, heur,
+                count, past, count - past, (double)(count-past)/count*100.0);
+    }
+    if(hfs > heur)
+        return hfs;
+    past++;
+    return heur;
 }
 

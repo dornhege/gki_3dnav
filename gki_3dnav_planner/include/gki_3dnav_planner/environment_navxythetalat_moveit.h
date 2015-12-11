@@ -44,6 +44,15 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         /// Use this to access the PlanningScene. Never use internal data structures for that.
         virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
 
+        bool useFreespaceHeuristic(bool on) { useFreespaceHeuristic_ = on; }
+
+        virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
+        virtual int GetStartHeuristic(int stateID);
+        virtual int GetGoalHeuristic(int stateID);
+
+        int count;
+        int past;
+
     protected:
         virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
 
@@ -61,6 +70,7 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         };
         std::vector<FullBodyCollisionInfo> full_body_collision_infos;
         freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
+        bool useFreespaceHeuristic_;
 
         planning_scene::PlanningScenePtr scene;
         planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
@@ -69,7 +79,6 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         std::vector<std::string> allowed_collision_links;
 
         ros::Publisher pose_array_publisher;
-
 
         sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
 
