@@ -34,8 +34,6 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   bool IsObstacle(int x, int y);
   unsigned char GetMapCost(int x, int y);
   void ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath);
-  int SetG(double x_m, double y_m, double theta_rad);
-  bool tryToReadPrims(FILE* file){ return ReadMotionPrimitives(file); }
   EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap);
   virtual ~EnvironmentNavXYThetaLatFlourish() {}
 
@@ -47,6 +45,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   virtual void clear_full_body_collision_infos();
   virtual void publish_expanded_states();
 
+  void publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells);
   void publish_traversable_map();
 
   /// Update the planning scene directly from the running MoveGroup instance.
@@ -57,6 +56,9 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   virtual void publish_planning_scene();
   /// Use this to access the PlanningScene. Never use internal data structures for that.
   virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
+
+
+  void computeWheelPositions();
 
  protected:
   int GetCellCost(int X, int Y, int Theta);
@@ -87,6 +89,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
   std::string scene_update_name;  ///< Scene updates are queried by this service.
   ros::Publisher planning_scene_publisher;
+  ros::Publisher wheel_cells_publisher;
   ros::Publisher traversable_map_publisher;
   std::vector<std::string> allowed_collision_links;
 

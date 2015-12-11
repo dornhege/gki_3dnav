@@ -29,6 +29,8 @@ pkg_check_modules(SBPL REQUIRED sbpl)
 include_directories(${SBPL_INCLUDE_DIRS})
 link_directories(${SBPL_LIBRARY_DIRS})
 
+#MESSAGE(FATAL_ERROR "sbpl includes: ${SBPL_INCLUDE_DIRS} ${SBPL_LIBRARY_DIRS} ${SBPL_LIBRARIES}")
+
 include_directories(SYSTEM ${Boost_INCLUDE_DIR} ${EIGEN_INCLUDE_DIRS})
 include_directories(${catkin_INCLUDE_DIRS})
 
@@ -143,6 +145,8 @@ target_link_libraries(gki_3dnav_planner
 	${SBPL_LIBRARIES} 
 	${Boost_LIBRARIES}
 )
+
+
 target_link_libraries(flourish_planner
 	${catkin_LIBRARIES}
 	${SBPL_LIBRARIES} 

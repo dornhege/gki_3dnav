@@ -26,14 +26,12 @@ Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
   return result;
 }
 
-//returns the stateid if success, and -1 otherwise
-int EnvironmentNavXYThetaLatFlourish::SetG(double x_m, double y_m, double theta_rad){
-
-  return EnvNAVXYTHETALAT.goalstateid;    
-}
-
 bool EnvironmentNavXYThetaLatFlourish::IsValidCell(int X, int Y){
   Eigen::Vector2i index(X,Y);
+  if(!tMap.isInside(index) ||
+     tMap.cell(X,Y).getElevation() >= robotSafeHeight){
+    std::cerr << "non valid cell " << X << ", " << Y << std::endl;
+  }
   return (tMap.isInside(index) &&
 	  tMap.cell(X,Y).getElevation() < robotSafeHeight);
 }
@@ -197,7 +195,7 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
   int targetx_c, targety_c, targettheta_c;
   int sourcex_c, sourcey_c, sourcetheta_c;
 
-  SBPL_PRINTF("checks=%ld\n", checks);
+  //SBPL_PRINTF("checks=%ld\n", checks);
 
   xythetaPath->clear();
 
@@ -277,7 +275,7 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
 EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap):
   tMap(tMap)
 {
-
+  std::cout << "CREATING ENVIRONMENT" << std::endl;
   robotHeight = 1.2;
   robotBodyHeight = 0.2; 
   robotBodyWidth = 2.0; 
@@ -299,19 +297,19 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
 
   try{
     tfListener.waitForTransform("/wheel_fr_link",  "/base_link", 
-    				 ros::Time(0), ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(1.5));
     tfListener.lookupTransform("/wheel_fr_link",  "/base_link", 
     				ros::Time(0), rightFrontWheelToBaseLinkTransform);
     tfListener.waitForTransform("/wheel_fl_link",  "/base_link", 
-    				 ros::Time(0), ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(1.5));
     tfListener.lookupTransform("/wheel_fl_link",  "/base_link", 
     				ros::Time(0), leftFrontWheelToBaseLinkTransform);
     tfListener.waitForTransform("/wheel_rr_link",  "/base_link", 
-    				 ros::Time(0), ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(1.5));
     tfListener.lookupTransform("/wheel_rr_link",  "/base_link", 
     				ros::Time(0), rightRearWheelToBaseLinkTransform);
     tfListener.waitForTransform("/wheel_rl_link",  "/base_link", 
-    				 ros::Time(0), ros::Duration(0.5));
+    				 ros::Time(0), ros::Duration(1.5));
     tfListener.lookupTransform("/wheel_rl_link",  "/base_link", 
     				ros::Time(0), leftRearWheelToBaseLinkTransform);
   }catch (tf::TransformException ex){
@@ -329,6 +327,9 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
 
   nhPriv.getParam("allowed_collision_links", allowed_collision_links);
 
+  wheel_cells_publisher = nhPriv.advertise<visualization_msgs::Marker>("wheelcells", 1, true); 
+  computeWheelPositions();
+
   //update_planning_scene();
 
   planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
@@ -345,7 +346,6 @@ int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double the
   int y = index.y();
   int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
   ROS_INFO("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
-  ROS_INFO("map size: (%d %d)\n", tMap.size()(0), tMap.size()(1));
 
   if(!tMap.isInside(index)){
     ROS_ERROR("ERROR: trying to set a goal cell %d %d that is outside of map\n", x,y);
@@ -468,7 +468,6 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   Eigen::Isometry3f baseTrafo = Eigen::Isometry3f::Identity();
   Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafo);
 
-  // TODO - check wheel cells
   Eigen::Isometry3f rfWheelToGlobal = baseTrafo*rightFrontWheelToBaseLink;
   Eigen::Isometry3f lfWheelToGlobal = baseTrafo*leftFrontWheelToBaseLink;
   Eigen::Isometry3f rrWheelToGlobal = baseTrafo*rightRearWheelToBaseLink;
@@ -792,6 +791,54 @@ void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
   traversable_map_publisher.publish(marker);
 }
 
+
+void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells){
+  //TODO
+  planningFrameID = "odom";
+
+  visualization_msgs::Marker marker;
+  marker.header.frame_id = planningFrameID;
+  marker.header.stamp = ros::Time::now();
+  marker.ns = "wheel_cells";
+  marker.id = 0;
+  marker.type = visualization_msgs::Marker::CUBE_LIST;
+  marker.action = visualization_msgs::Marker::ADD;
+  marker.pose.position.x = 0;
+  marker.pose.position.y = 0;
+  marker.pose.position.z = 0;
+  marker.pose.orientation.x = 0.0;
+  marker.pose.orientation.y = 0.0;
+  marker.pose.orientation.z = 0.0;
+  marker.pose.orientation.w = 1.0;
+    
+  float res = tMap.getResolution();
+  marker.scale.x = res;
+  marker.scale.y = res;
+  marker.scale.z = res;
+  marker.color.a = 1.0; 
+  marker.color.r = 0.0;
+  marker.color.g = 1.0;
+  marker.color.b = 0.0;
+
+  for(size_t i = 0; i < wheelCells.size(); i++){
+    geometry_msgs::Point p;
+    p.x = tMap.gridToWorld(wheelCells[i])(0)-costmapOffsetX;
+    p.y = tMap.gridToWorld(wheelCells[i])(1)-costmapOffsetY;
+    p.z = tMap.cell(wheelCells[i]).getElevation();
+    marker.points.push_back(p);
+    std_msgs::ColorRGBA c;
+    c.r = 1;
+    c.g = 0;
+    //c.b = 0.2 + (tMap.cell(i,j).getElevation()-minElevation)*0.8f/(maxElevation-minElevation);
+    c.b = 0;
+    c.a = 1;
+    marker.colors.push_back(c);
+  }
+
+  wheel_cells_publisher.publish(marker);
+}
+
+
 sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatFlourish::discreteToContinuous(int x, int y, int theta)
 {
   sbpl_xy_theta_pt_t pose;
@@ -828,4 +875,88 @@ const EnvironmentNavXYThetaLatFlourish::FullBodyCollisionInfo& EnvironmentNavXYT
       //        pose.theta, full_body_collision_infos[state->stateID].collision);
     }
   return full_body_collision_infos[state->stateID];
+}
+
+void EnvironmentNavXYThetaLatFlourish::computeWheelPositions(){
+  tf::TransformListener tfListener;
+  tf::StampedTransform frWheelTofrArmUpperLinkT, flWheelToflArmUpperLinkT, rrWheelTorrArmUpperLinkT, rlWheelTorlArmUpperLinkT, frArmUpperToBaseLinkT;
+
+  //ros::Time now = ros::Time::now();
+
+  try{
+    tfListener.waitForTransform("/wheel_fr_link",  "/arm_fr_upper_link", 
+    				 ros::Time(0), ros::Duration(1.5));
+    tfListener.lookupTransform("/wheel_fr_link",  "/arm_fr_upper_link", 
+    				 ros::Time(0), frWheelTofrArmUpperLinkT);
+    //tfListener.waitForTransform("/wheel_fl_link",  "/arm_fl_upper_link", 
+    //				 ros::Time(0), ros::Duration(0.5));
+    //tfListener.lookupTransform("/wheel_fl_link",  "/arm_fl_upper_link", 
+    //				 ros::Time(0), flWheelToflArmUpperLinkT);
+    //tfListener.waitForTransform("/wheel_rr_link",  "/arm_rr_upper_link", 
+    //				 ros::Time(0), ros::Duration(0.5));
+    //tfListener.lookupTransform("/wheel_rr_link",  "/arm_rr_upper_link", 
+    //				 ros::Time(0), rrWheelTorrArmUpperLinkT);
+    //tfListener.waitForTransform("/wheel_rl_link",  "/arm_rl_upper_link", 
+    //				 ros::Time(0), ros::Duration(0.5));
+    //tfListener.lookupTransform("/wheel_rl_link",  "/arm_rl_upper_link", 
+    //ros::Time(0), rlWheelTorlArmUpperLinkT);
+    tfListener.waitForTransform("/arm_fr_upper_link", "/base_link",
+    				 ros::Time(0), ros::Duration(1.5));
+    tfListener.lookupTransform("/arm_fr_upper_link",  "/base_link", 
+    				 ros::Time(0), frArmUpperToBaseLinkT);
+  }catch (tf::TransformException ex){
+    ROS_ERROR("%s",ex.what());
+    ros::Duration(1.0).sleep();
+  }
+
+  Eigen::Isometry3f frWheelTofrArmUpperLink = stampedTfToIsometry(frWheelTofrArmUpperLinkT);
+  //Eigen::Isometry3f flWheelToflArmUpperLink = stampedTfToIsometry(flWheelToflArmUpperLinkT);
+  //Eigen::Isometry3f rrWheelTorrArmUpperLink = stampedTfToIsometry(rrWheelTorrArmUpperLinkT);
+  //Eigen::Isometry3f rlWheelTorlArmUpperLink = stampedTfToIsometry(rlWheelTorlArmUpperLinkT);
+  Eigen::Isometry3f frArmUpperToBaseLink = stampedTfToIsometry(frArmUpperToBaseLinkT);
+
+  float xlength = frWheelTofrArmUpperLink.translation().x();
+  float ylength = frWheelTofrArmUpperLink.translation().y();
+  float armLength = sqrt(xlength*xlength + ylength*ylength);
+  int discArmLength = ceil(armLength/tMap.getResolution());
+
+  int xBaseOffset = abs(frArmUpperToBaseLink.translation().x()/tMap.getResolution());
+  int yBaseOffset = abs(frArmUpperToBaseLink.translation().y()/tMap.getResolution());
+  std::cerr << "armlength = " << armLength << " in cells = " << discArmLength 
+	    << ", xlength = " << xlength << ", ylength = " << ylength 
+	    << ", xoffset = " << frArmUpperToBaseLink.translation().x() << ", yoffset = " << frArmUpperToBaseLink.translation().y()
+	    << ", xoffsetcells = " << xBaseOffset << ", yoffsetcells = " << yBaseOffset
+	    << std::endl;
+  
+  float xStart, xEnd, yStart, yEnd;
+  std::vector<Eigen::Vector2i> possibleWheelCells;
+  //Eigen::Vector2i frArmUpperToBaseLinkTranslation;
+  yStart = armLength;
+
+  for(int i = 0; i < discArmLength; ++i){
+    xStart = i*tMap.getResolution();
+    xEnd = (i+1)*tMap.getResolution();
+    if(xEnd < armLength){
+      yEnd = sqrt(armLength*armLength - xEnd*xEnd);
+    }else{
+      yEnd = 0;
+    }
+    int yStartCell = yStart/tMap.getResolution();
+    int yEndCell = yEnd/tMap.getResolution();
+    for(int j = yEndCell; j <= yStartCell; ++j){
+      possibleWheelCells.push_back(Eigen::Vector2i(i+xBaseOffset, -j-yBaseOffset));
+      possibleWheelCells.push_back(Eigen::Vector2i(i+xBaseOffset, yBaseOffset+j));
+      possibleWheelCells.push_back(Eigen::Vector2i(-i-xBaseOffset, j+yBaseOffset));
+      possibleWheelCells.push_back(Eigen::Vector2i(-i-xBaseOffset, -yBaseOffset-j));
+      std::cerr << "relative wheel cell " << i << ", " << j << std::endl;
+      std::cerr << "fr wheel cell " << i+xBaseOffset << ", " << j-yBaseOffset << std::endl;
+
+     // std::cerr << "got wheel cells " << i+xBaseOffset << ", " << j-yBaseOffset << "; "
+     //		<< i+xBaseOffset << ", " << yBaseOffset-j << "; "
+     //		<< -i-xBaseOffset << ", " << j-yBaseOffset << "; "
+     //		<< -i-xBaseOffset << ", " << yBaseOffset-j << std::endl;
+    }
+    yStart = yEnd;
+  }
+  publish_wheel_cells(possibleWheelCells);
 }

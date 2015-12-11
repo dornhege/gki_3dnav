@@ -347,7 +347,7 @@ namespace flourish_planner{
     planner_->force_planning_from_scratch();
     try{
       int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
-      std::cout << "planning from start " << start.pose.position.x << ", " << start.pose.position.y << std::endl;
+      //std::cout << "planning from start " << start.pose.position.x << ", " << start.pose.position.y << std::endl;
       if (ret < 0 || planner_->set_start(ret) == 0){
 	ROS_ERROR("ERROR: failed to set start state\n");
 	return false;
