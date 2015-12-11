@@ -949,7 +949,7 @@ void EnvironmentNavXYThetaLatFlourish::computeWheelPositions(){
       possibleWheelCells.push_back(Eigen::Vector2i(-i-xBaseOffset, j+yBaseOffset));
       possibleWheelCells.push_back(Eigen::Vector2i(-i-xBaseOffset, -yBaseOffset-j));
       std::cerr << "relative wheel cell " << i << ", " << j << std::endl;
-      std::cerr << "fr wheel cell " << i+xBaseOffset << ", " << j-yBaseOffset << std::endl;
+      std::cerr << "fr wheel cell " << i+xBaseOffset << ", " << -j-yBaseOffset << std::endl;
 
      // std::cerr << "got wheel cells " << i+xBaseOffset << ", " << j-yBaseOffset << "; "
      //		<< i+xBaseOffset << ", " << yBaseOffset-j << "; "
