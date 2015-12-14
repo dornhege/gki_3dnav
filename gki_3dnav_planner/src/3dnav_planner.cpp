@@ -212,6 +212,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 		ROS_INFO("[gki_3dnav_planner] Initialized successfully");
 		plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
 		//stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
+        traj_pub_ = private_nh.advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
 
 		initialized_ = true;
 	}
@@ -294,12 +295,24 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
     env_->count = 0;
     env_->past = 0;
     bool planOK = makePlan_(start, goal, plan);
+    if(planOK) {
+        moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
+        traj_pub_.publish(traj);
+        ROS_INFO("Published traj and waiting 10s");
+        ros::Duration(10.0).sleep();
+    }
 
     env_->useFreespaceHeuristic(false);
     std::vector<geometry_msgs::PoseStamped> plan2;
     env_->count = 0;
     env_->past = 0;
     bool plan2OK = makePlan_(start, goal, plan2);
+    if(plan2OK) {
+        moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan2);
+        traj_pub_.publish(traj);
+        ROS_INFO("Published traj2 1s");
+        ros::Duration(1.0).sleep();
+    }
 
     if(!planOK && plan2OK) {
         plan = plan2;

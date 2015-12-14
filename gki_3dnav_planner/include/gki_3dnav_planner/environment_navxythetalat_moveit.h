@@ -7,6 +7,7 @@
 #include <ros/ros.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+#include <moveit_msgs/DisplayTrajectory.h>
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 
 // TODO
@@ -50,9 +51,10 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual int GetStartHeuristic(int stateID);
         virtual int GetGoalHeuristic(int stateID);
 
+        moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
+
         int count;
         int past;
-
     protected:
         virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
 

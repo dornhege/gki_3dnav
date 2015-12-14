@@ -5,6 +5,8 @@
 #include <sbpl/planners/planner.h>
 #include <sbpl/utils/2Dgridsearch.h>
 #include <moveit/move_group/capability_names.h>
+#include <moveit/robot_state/conversions.h>
+#include <tf/transform_datatypes.h>
 
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
@@ -314,5 +316,45 @@ int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
         return hfs;
     past++;
     return heur;
+}
+
+moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatMoveit::pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const
+{
+    moveit_msgs::DisplayTrajectory dtraj;
+    dtraj.model_id = "robot";    // FIXME this is just for matching?
+    if(path.empty())
+        return dtraj;
+
+    // Do NOT update the scene. This should be the path that we planned with before.
+    moveit::core::robotStateToRobotStateMsg(scene->getCurrentState(), dtraj.trajectory_start);
+    moveit_msgs::RobotTrajectory traj;
+    traj.multi_dof_joint_trajectory.header = path.front().header;   // all poses in path should be in the same frame
+    traj.multi_dof_joint_trajectory.joint_names.push_back("world_joint");
+    tf::Transform lastPose;
+    for(unsigned int i = 0; i < path.size(); ++i) {
+        trajectory_msgs::MultiDOFJointTrajectoryPoint pt;
+        geometry_msgs::Transform tf;
+        tf.translation.x = path[i].pose.position.x;
+        tf.translation.y = path[i].pose.position.y;
+        tf.translation.z = path[i].pose.position.z;
+        tf.rotation = path[i].pose.orientation;
+
+        if(i > 0) {
+            tf::Transform curPose;
+            tf::transformMsgToTF(tf, curPose);
+            tf::Transform delta = lastPose.inverseTimes(curPose);
+            if(hypot(delta.getOrigin().x(), delta.getOrigin().y()) < 0.05 &&
+                    tf::getYaw(delta.getRotation()) < 0.2)
+                continue;
+        }
+
+        pt.transforms.push_back(tf);
+        tf::transformMsgToTF(tf, lastPose);
+
+        traj.multi_dof_joint_trajectory.points.push_back(pt);
+    }
+
+    dtraj.trajectory.push_back(traj);
+    return dtraj;
 }
 

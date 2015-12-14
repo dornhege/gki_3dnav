@@ -99,6 +99,7 @@ private:
 	costmap_2d::Costmap2DROS* costmap_ros_; /**< manages the cost map for us */
 
 	ros::Publisher plan_pub_;
+    ros::Publisher traj_pub_;
 	ros::Publisher stats_publisher_;
 
 	std::vector<geometry_msgs::Point> footprint_;
