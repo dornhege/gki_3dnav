@@ -67,11 +67,10 @@ include_directories(${catkin_INCLUDE_DIRS})
 # )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+  FILES
+  SampleValidPoses.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -81,10 +80,10 @@ include_directories(${catkin_INCLUDE_DIRS})
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   moveit_msgs#   nav_msgs#   std_msgs#   visualization_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  moveit_msgs geometry_msgs
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -121,12 +120,18 @@ add_library(gki_3dnav_planner
     src/3dnav_planner.cpp
 )
 
+add_executable(sample_valid_poses
+    src/sample_valid_poses.cpp)
+target_link_libraries(sample_valid_poses
+    ${catkin_LIBRARIES})
+add_dependencies(sample_valid_poses gki_3dnav_planner_generate_messages_cpp)
+
 ## Declare a cpp executable
 add_executable(visual_path_planning_node src/VisualPathPlannerNode.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-# add_dependencies(gki_3dnav_planner_node gki_3dnav_planner_generate_messages_cpp)
+add_dependencies(gki_3dnav_planner gki_3dnav_planner_generate_messages_cpp)
 #add_dependencies(visual_path_planning_node full_body_nav_msgs_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against

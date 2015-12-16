@@ -16,6 +16,7 @@ using namespace std;
 #include "gki_3dnav_planner/environment_navxythetalat_moveit.h"
 #include <sbpl/headers.h>
 #include <geometry_msgs/Pose2D.h>
+#include <gki_3dnav_planner/SampleValidPoses.h>
 
 //global representation
 #include <nav_core/base_global_planner.h>
@@ -67,7 +68,9 @@ public:
 	virtual ~GKI3dNavPlanner()
 	{
 	}
-	;
+	
+protected:
+    bool sampleValidPoses(gki_3dnav_planner::SampleValidPoses::Request & req, gki_3dnav_planner::SampleValidPoses::Response & resp);
 
 private:
 	bool makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan);
@@ -101,6 +104,8 @@ private:
 	ros::Publisher plan_pub_;
     ros::Publisher traj_pub_;
 	ros::Publisher stats_publisher_;
+
+    ros::ServiceServer srv_sample_poses_;
 
 	std::vector<geometry_msgs::Point> footprint_;
 

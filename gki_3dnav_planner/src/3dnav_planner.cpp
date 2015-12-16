@@ -214,6 +214,11 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 		//stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
         traj_pub_ = private_nh.advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
 
+        srv_sample_poses_ = private_nh.advertiseService("sample_valid_poses",
+                &GKI3dNavPlanner::sampleValidPoses, this);
+
+        srand48(time(NULL));
+
 		initialized_ = true;
 	}
 }
@@ -270,6 +275,52 @@ bool GKI3dNavPlanner::transformPoseToPlanningFrame(geometry_msgs::PoseStamped& s
 		stamped.header.frame_id = scene->getPlanningFrame();
 	}
 	return true;
+}
+
+bool GKI3dNavPlanner::sampleValidPoses(gki_3dnav_planner::SampleValidPoses::Request & req, gki_3dnav_planner::SampleValidPoses::Response & resp)
+{
+	env_->clear_full_body_collision_infos();
+	env_->update_planning_scene();
+	planning_scene::PlanningSceneConstPtr scene = env_->getPlanningScene();
+    collision_detection::CollisionWorld::ObjectConstPtr octomapObj = scene->getWorld()->getObject(planning_scene::PlanningScene::OCTOMAP_NS);
+    if(!octomapObj)
+        return false;
+    if(octomapObj->shapes_.size() != 1)
+        return false;
+
+    const shapes::OcTree* o = static_cast<const shapes::OcTree*>(octomapObj->shapes_[0].get());
+    assert(o->octree);
+    const octomap::OcTree & octree = *(o->octree);
+    geometry_msgs::Point min, max;
+    octree.getMetricMin(min.x, min.y, min.z);
+    octree.getMetricMax(max.x, max.y, max.z);
+
+    geometry_msgs::Pose pose;
+    resp.poses.header.frame_id = scene->getPlanningFrame();
+    int numTries = 0;
+    while(numTries < req.max_tries) {
+        // sample pose and add to resp
+        pose.position.x = min.x + (max.x - min.x) * drand48();
+        pose.position.y = min.y + (max.y - min.y) * drand48();
+        double theta = -M_PI + 2 * M_PI * drand48();
+        pose.orientation = tf::createQuaternionMsgFromYaw(theta);
+
+        numTries++;
+        try {
+            int ret = env_->SetStart(pose.position.x - costmap_ros_->getCostmap()->getOriginX(),
+                    pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta);
+            if(ret < 0)
+                continue;
+        } catch (SBPL_Exception& e) {
+            continue;
+        }
+
+        resp.poses.poses.push_back(pose);
+        if(resp.poses.poses.size() >= req.n)
+            break;
+    }
+
+    return resp.poses.poses.size() >= req.n;
 }
 
 bool GKI3dNavPlanner::makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
