@@ -13,7 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   std_msgs
   std_srvs
-  #sbpl
+  nav_msgs
   visualization_msgs
   interactive_markers
   freespace_mechanism_heuristic
@@ -60,11 +60,11 @@ include_directories(${catkin_INCLUDE_DIRS})
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  PlannerStat.msg
+  PlannerStats.msg
+)
 
 ## Generate services in the 'srv' folder
 add_service_files(
@@ -125,6 +125,13 @@ add_executable(sample_valid_poses
 target_link_libraries(sample_valid_poses
     ${catkin_LIBRARIES})
 add_dependencies(sample_valid_poses gki_3dnav_planner_generate_messages_cpp)
+
+add_executable(evaluate_pose_queries
+    src/evaluate_pose_queries.cpp)
+target_link_libraries(evaluate_pose_queries
+    ${catkin_LIBRARIES}
+    yaml-cpp)
+add_dependencies(evaluate_pose_queries gki_3dnav_planner_generate_messages_cpp)
 
 ## Declare a cpp executable
 add_executable(visual_path_planning_node src/VisualPathPlannerNode.cpp)

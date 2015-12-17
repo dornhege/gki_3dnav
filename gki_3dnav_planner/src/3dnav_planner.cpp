@@ -38,7 +38,8 @@
 #include <gki_3dnav_planner/3dnav_planner.h>
 #include <pluginlib/class_list_macros.h>
 #include <nav_msgs/Path.h>
-//#include <sbpl_lattice_planner/SBPLLatticePlannerStats.h>
+#include <gki_3dnav_planner/PlannerStats.h>
+#include <sbpl/planners/planner.h>
 
 #include <costmap_2d/inflation_layer.h>
 #include <eigen_conversions/eigen_msg.h>
@@ -106,25 +107,26 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 {
 	if (!initialized_)
 	{
-		ros::NodeHandle private_nh("~/" + name);
+		private_nh_ = new ros::NodeHandle("~/" + name);
 		ros::NodeHandle nh(name);
 
 		ROS_INFO("Name is %s", name.c_str());
 
-		private_nh.param("planner_type", planner_type_, string("ARAPlanner"));
-		private_nh.param("allocated_time", allocated_time_, 10.0);
-		private_nh.param("initial_epsilon", initial_epsilon_, 3.0);
-		private_nh.param("environment_type", environment_type_, string("XYThetaLattice"));
-		private_nh.param("forward_search", forward_search_, bool(false));
-		private_nh.param("primitive_filename", primitive_filename_, string(""));
-		private_nh.param("force_scratch_limit", force_scratch_limit_, 500);
+		private_nh_->param("planner_type", planner_type_, string("ARAPlanner"));
+		private_nh_->param("allocated_time", allocated_time_, 10.0);
+		private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
+		private_nh_->param("environment_type", environment_type_, string("XYThetaLattice"));
+		private_nh_->param("forward_search", forward_search_, bool(false));
+		private_nh_->param("primitive_filename", primitive_filename_, string(""));
+		private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
+        private_nh_->param("use_freespace_heuristic", use_freespace_heuristic_, true);
 
 		double nominalvel_mpersecs, timetoturn45degsinplace_secs;
-		private_nh.param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
-		private_nh.param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
+		private_nh_->param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
+		private_nh_->param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
 
 		int lethal_obstacle;
-		private_nh.param("lethal_obstacle", lethal_obstacle, 20);
+		private_nh_->param("lethal_obstacle", lethal_obstacle, 20);
 		lethal_obstacle_ = (unsigned char) lethal_obstacle;
 		inscribed_inflated_obstacle_ = lethal_obstacle_ - 1;
 		sbpl_cost_multiplier_ = (unsigned char) (costmap_2d::INSCRIBED_INFLATED_OBSTACLE / inscribed_inflated_obstacle_ + 1);
@@ -134,7 +136,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 
 		std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
 
-		env_ = new EnvironmentNavXYThetaLatMoveit(private_nh, costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
+		env_ = new EnvironmentNavXYThetaLatMoveit(*private_nh_, costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
 
 		// check if the costmap has an inflation layer
 		// Warning: footprint updates after initialization are not supported here
@@ -210,11 +212,11 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 		}
 
 		ROS_INFO("[gki_3dnav_planner] Initialized successfully");
-		plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
-		//stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
-        traj_pub_ = private_nh.advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
+		plan_pub_ = private_nh_->advertise<nav_msgs::Path>("plan", 1);
+		stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
+        traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
 
-        srv_sample_poses_ = private_nh.advertiseService("sample_valid_poses",
+        srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
                 &GKI3dNavPlanner::sampleValidPoses, this);
 
         srand48(time(NULL));
@@ -239,23 +241,20 @@ unsigned char GKI3dNavPlanner::costMapCostToSBPLCost(unsigned char newcost)
 
 void GKI3dNavPlanner::publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal)
 {
-	// Fill up statistics and publish
-//	sbpl_lattice_planner::SBPLLatticePlannerStats stats;
-//	stats.initial_epsilon = initial_epsilon_;
-//	stats.plan_to_first_solution = false;
-//	stats.final_number_of_expands = planner_->get_n_expands();
-//	stats.allocated_time = allocated_time_;
-//
-//	stats.time_to_first_solution = planner_->get_initial_eps_planning_time();
-//	stats.actual_time = planner_->get_final_eps_planning_time();
-//	stats.number_of_expands_initial_solution = planner_->get_n_expands_init_solution();
-//	stats.final_epsilon = planner_->get_final_epsilon();
-//
-//	stats.solution_cost = solution_cost;
-//	stats.path_size = solution_size;
-//	stats.start = start;
-//	stats.goal = goal;
-//	stats_publisher_.publish(stats);
+	gki_3dnav_planner::PlannerStats stats;
+    std::vector< ::PlannerStats > planner_stats;
+    planner_->get_search_stats(&planner_stats);
+    for(int i = 0; i < planner_stats.size(); ++i) {
+        gki_3dnav_planner::PlannerStat stat;
+        stat.eps = planner_stats[i].eps;
+        stat.suboptimality = planner_stats[i].suboptimality;
+        stat.time = planner_stats[i].time;
+        stat.g = planner_stats[i].g;
+        stat.cost = planner_stats[i].cost;
+        stat.expands = planner_stats[i].expands;
+        stats.stats.push_back(stat);
+    }
+	stats_publisher_.publish(stats);
 }
 
 bool GKI3dNavPlanner::transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped)
@@ -337,38 +336,40 @@ bool GKI3dNavPlanner::makePlan(planning_scene::PlanningSceneConstPtr scene, cons
 	env_->publish_planning_scene();
 	return makePlan_(start, goal, plan);
 }
+
 bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
 {
 	env_->clear_full_body_collision_infos();
 	env_->update_planning_scene();
 	env_->publish_planning_scene();
-    env_->useFreespaceHeuristic(true);
+    private_nh_->getParam("use_freespace_heuristic", use_freespace_heuristic_);
+    env_->useFreespaceHeuristic(use_freespace_heuristic_);
     env_->count = 0;
     env_->past = 0;
     bool planOK = makePlan_(start, goal, plan);
     if(planOK) {
         moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
         traj_pub_.publish(traj);
-        ROS_INFO("Published traj and waiting 10s");
-        ros::Duration(10.0).sleep();
+        ROS_INFO("Published traj");
+        //ros::Duration(10.0).sleep();
     }
 
-    env_->useFreespaceHeuristic(false);
-    std::vector<geometry_msgs::PoseStamped> plan2;
-    env_->count = 0;
-    env_->past = 0;
-    bool plan2OK = makePlan_(start, goal, plan2);
-    if(plan2OK) {
-        moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan2);
-        traj_pub_.publish(traj);
-        ROS_INFO("Published traj2 1s");
-        ros::Duration(1.0).sleep();
-    }
+    //env_->useFreespaceHeuristic(false);
+    //std::vector<geometry_msgs::PoseStamped> plan2;
+    //env_->count = 0;
+    //env_->past = 0;
+    //bool plan2OK = makePlan_(start, goal, plan2);
+    //if(plan2OK) {
+    //    moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan2);
+    //    traj_pub_.publish(traj);
+    //    ROS_INFO("Published traj2 1s");
+    //    ros::Duration(1.0).sleep();
+    //}
 
-    if(!planOK && plan2OK) {
-        plan = plan2;
-        return plan2OK;
-    }
+    //if(!planOK && plan2OK) {
+    //    plan = plan2;
+    //    return plan2OK;
+    //}
     return planOK;
 }
 
@@ -379,6 +380,7 @@ bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs:
 		ROS_ERROR("Global planner is not initialized");
 		return false;
 	}
+    ROS_INFO("Planning frame is %s", env_->getPlanningScene()->getPlanningFrame().c_str());
 	if (! transformPoseToPlanningFrame(start))
 	{
 		ROS_ERROR("Unable to transform start pose into planning frame");

@@ -65,8 +65,8 @@ public:
 	 */
 	virtual bool makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan);
 
-	virtual ~GKI3dNavPlanner()
-	{
+	virtual ~GKI3dNavPlanner() {
+        delete private_nh_;
 	}
 	
 protected:
@@ -78,7 +78,9 @@ private:
 	unsigned char costMapCostToSBPLCost(unsigned char newcost);
 	void publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal);
 
+private:
 	bool initialized_;
+    ros::NodeHandle* private_nh_;
 
 	SBPLPlanner* planner_;
 	EnvironmentNavXYThetaLatMoveit* env_;
@@ -94,6 +96,7 @@ private:
 	bool forward_search_; /** whether to use forward or backward search */
 	std::string primitive_filename_; /** where to find the motion primitives for the current robot */
 	int force_scratch_limit_; /** the number of cells that have to be changed in the costmap to force the planner to plan from scratch even if its an incremental planner */
+    bool use_freespace_heuristic_;
 
 	unsigned char lethal_obstacle_;
 	unsigned char inscribed_inflated_obstacle_;
