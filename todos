@@ -3,7 +3,7 @@
 ;; then enter the text in that file's own buffer.
 
 get frame from costmap
-envcfg sinnvoll fuellen, Grid2d -> NULL
-grid2d durch travmap ersetzen
+envcfg sinnvoll fuellen, Grid2d mit max(possiblewheelcells height)-height
 initialize stuff angucken (initEnv, initGeneral,...) + sinnvoll ersetzen
 write new ReadConfiguration, EnsureHeuristicsUpdated, SetMap,  
+show all motion primitives with color code for traversability

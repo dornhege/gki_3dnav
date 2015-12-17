@@ -8,6 +8,8 @@
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <navigation/mapping/metaMap/base/traversableMap.h>
+#include <moveit_msgs/DisplayTrajectory.h>
+#include <sbpl/utils/key.h>
 
 // TODO
 // Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target
@@ -42,7 +44,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_lookup(int X, int Y, int Theta);
   virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_hash(int X, int Y, int Theta);
 
-  virtual void clear_full_body_collision_infos();
+  virtual void clear_full_body_traversability_cost_infos();
   virtual void publish_expanded_states();
 
   void publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells);
@@ -58,7 +60,9 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
 
 
+  int ComputeCosts(int SourceX, int SourceY, int SourceTheta);
   void computeWheelPositions();
+  moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
 
  protected:
   int GetCellCost(int X, int Y, int Theta);
@@ -71,18 +75,18 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 			double timetoturn45degsinplace_secs,
 			const std::vector<sbpl_2Dpt_t> & robot_perimeterV);
 
-  struct FullBodyCollisionInfo
+  struct FullBodyTraversabilityCost
   {
+    int cost;
     bool initialized;
-    bool collision;
 
-    FullBodyCollisionInfo()
+    FullBodyTraversabilityCost()
     {
       initialized = false;
-      collision = true;
+      cost = INFINITECOST;
     }
   };
-  std::vector<FullBodyCollisionInfo> full_body_collision_infos;
+  std::vector<FullBodyTraversabilityCost> full_body_traversability_cost_infos;
 
 
   planning_scene::PlanningScenePtr scene;
@@ -97,13 +101,17 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 
 
   sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
+  void discreteXYToContinuous(int x_d, int y_d, double& x_c, double& y_c);
+  void continuousToDiscrete(sbpl_xy_theta_pt_t pose, int& x, int& y, int& theta);
+  void continuousToDiscrete(double x_c, double y_c, double theta_c, int& x, int& y, int& theta);
+  Eigen::Vector2i continuousXYToDiscrete(Eigen::Vector2f xy_c);
 
   bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);
-  const FullBodyCollisionInfo& get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state);
+  const FullBodyTraversabilityCost& get_full_body_traversability_cost_info(EnvNAVXYTHETALATHashEntry_t* state);
 
   // offsets to convert costmap coordinates to world coordinates for 3d collision checks
-  double costmapOffsetX;
-  double costmapOffsetY;
+  double mapOffsetX;
+  double mapOffsetY;
   Ais3dTools::TraversableMap tMap;
   Eigen::Isometry3f rightFrontWheelToBaseLink, leftFrontWheelToBaseLink, rightRearWheelToBaseLink, leftRearWheelToBaseLink;
 
@@ -115,6 +123,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   float robotMinSafeDistance;
   float robotSafeHeight;
 
+  tf::TransformListener* tfListener;
 
   std::string planningFrameID;
 };

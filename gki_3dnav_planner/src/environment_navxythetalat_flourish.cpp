@@ -4,6 +4,8 @@
 #include <sbpl/utils/key.h>
 #include <sbpl/planners/planner.h>
 #include <moveit/move_group/capability_names.h>
+#include <moveit/robot_state/conversions.h>
+#include <tf/transform_datatypes.h>
 
 #include <tf/tfMessage.h>
 #include <tf/transform_listener.h>
@@ -43,23 +45,17 @@ bool EnvironmentNavXYThetaLatFlourish::IsWithinMapCell(int X, int Y){
 
 bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Theta){
   std::vector<sbpl_2Dcell_t> footprint;
-  sbpl_xy_theta_pt_t pose;
-
   //compute continuous pose
-  Eigen::Vector2i index(X,Y);
-  Eigen::Vector2f pos = tMap.gridToWorld(index);
-  Eigen::Vector2f offset;
-  tMap.getOffset(offset);
-  // hack because get_2d_footprint_cells doesn't use offset
-  pose.x = pos.x()-offset.x();
-  pose.y = pos.y()-offset.y();
-  pose.theta = DiscTheta2Cont(Theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  sbpl_xy_theta_pt_t pose = discreteToContinuous(X, Y, Theta);
 
+  // hack because get_2d_footprint_cells doesn't use offset
+  pose.x -= mapOffsetX;
+  pose.y -= mapOffsetY;
   //compute footprint cells
   get_2d_footprint_cells(EnvNAVXYTHETALATCfg.FootprintPolygon, &footprint, pose, tMap.getResolution());
   // hack because get_2d_footprint_cells doesn't use offset
-  pose.x = pos.x();
-  pose.y = pos.y();
+  pose.x += mapOffsetX;
+  pose.y += mapOffsetY;
 
   /*std::cout << "footprint cells on pose " << pose.x << ", " << pose.y << std::endl;
   for(int find = 0; find < (int)footprint.size(); find++){
@@ -78,7 +74,7 @@ bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Th
       std::cout << "invalid cell " << x << ", " << y 
 		<< " for footprint on pose " << pose.x << ", " << pose.y
 		<< ", cell " << X << ", " << Y
-		<< " offsetx " << costmapOffsetX
+		<< " offsetx " << mapOffsetX
 		<< std::endl;
       return false;
     }
@@ -254,17 +250,16 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
     //now push in the actual path
     int sourcex_c, sourcey_c, sourcetheta_c;
     GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
-    Eigen::Vector2i index(sourcex_c, sourcey_c);
-    Eigen::Vector2f pos = tMap.gridToWorld(index);
-    double sourcex, sourcey;
-    sourcex = pos.x();
-    sourcey = pos.y();
+    //Eigen::Vector2i index(sourcex_c, sourcey_c);
+    //Eigen::Vector2f pos = tMap.gridToWorld(index);
+    sbpl_xy_theta_pt_t source_xy_theta = discreteToContinuous(sourcex_c, sourcey_c, sourcetheta_c);
+
     //TODO - when there are no motion primitives we should still print source state
     for(int ipind = 0; ipind < ((int)actionV[bestsind]->intermptV.size())-1; ipind++){
       //translate appropriately
       sbpl_xy_theta_pt_t intermpt = actionV[bestsind]->intermptV[ipind];
-      intermpt.x += sourcex;
-      intermpt.y += sourcey;
+      intermpt.x += source_xy_theta.x;
+      intermpt.y += source_xy_theta.y;
 
       //store
       xythetaPath->push_back(intermpt);
@@ -286,31 +281,31 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
 
   Eigen::Vector2f offset;
   tMap.getOffset(offset);
-  costmapOffsetX = offset.x();
-  costmapOffsetY = offset.y();
+  mapOffsetX = offset.x();
+  mapOffsetY = offset.y();
   
 
-  tf::TransformListener tfListener;
+  tfListener = new tf::TransformListener();
   tf::StampedTransform rightFrontWheelToBaseLinkTransform, leftFrontWheelToBaseLinkTransform, rightRearWheelToBaseLinkTransform, leftRearWheelToBaseLinkTransform;
 
   //ros::Time now = ros::Time::now();
 
   try{
-    tfListener.waitForTransform("/wheel_fr_link",  "/base_link", 
+    tfListener->waitForTransform("/wheel_fr_link",  "/base_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener.lookupTransform("/wheel_fr_link",  "/base_link", 
+    tfListener->lookupTransform("/wheel_fr_link",  "/base_link", 
     				ros::Time(0), rightFrontWheelToBaseLinkTransform);
-    tfListener.waitForTransform("/wheel_fl_link",  "/base_link", 
+    tfListener->waitForTransform("/wheel_fl_link",  "/base_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener.lookupTransform("/wheel_fl_link",  "/base_link", 
+    tfListener->lookupTransform("/wheel_fl_link",  "/base_link", 
     				ros::Time(0), leftFrontWheelToBaseLinkTransform);
-    tfListener.waitForTransform("/wheel_rr_link",  "/base_link", 
+    tfListener->waitForTransform("/wheel_rr_link",  "/base_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener.lookupTransform("/wheel_rr_link",  "/base_link", 
+    tfListener->lookupTransform("/wheel_rr_link",  "/base_link", 
     				ros::Time(0), rightRearWheelToBaseLinkTransform);
-    tfListener.waitForTransform("/wheel_rl_link",  "/base_link", 
+    tfListener->waitForTransform("/wheel_rl_link",  "/base_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener.lookupTransform("/wheel_rl_link",  "/base_link", 
+    tfListener->lookupTransform("/wheel_rl_link",  "/base_link", 
     				ros::Time(0), leftRearWheelToBaseLinkTransform);
   }catch (tf::TransformException ex){
     ROS_ERROR("%s",ex.what());
@@ -323,12 +318,12 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   leftRearWheelToBaseLink = stampedTfToIsometry(leftRearWheelToBaseLinkTransform);
 
   nhPriv.param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
-  //scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
+  scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
 
   nhPriv.getParam("allowed_collision_links", allowed_collision_links);
 
   wheel_cells_publisher = nhPriv.advertise<visualization_msgs::Marker>("wheelcells", 1, true); 
-  computeWheelPositions();
+  //computeWheelPositions();
 
   //update_planning_scene();
 
@@ -340,13 +335,10 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double theta_rad)
 {
-  Eigen::Vector2f pos(x_m, y_m);
-  Eigen::Vector2i index = tMap.worldToGrid(pos);
-  int x = index.x();
-  int y = index.y();
-  int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  int x, y, theta;
+  continuousToDiscrete(x_m, y_m, theta_rad, x, y, theta);
   ROS_INFO("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
-
+  Eigen::Vector2i index(x, y);
   if(!tMap.isInside(index)){
     ROS_ERROR("ERROR: trying to set a goal cell %d %d that is outside of map\n", x,y);
     return -1;
@@ -382,11 +374,8 @@ int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double the
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double theta_rad)
 {
-  Eigen::Vector2f pos(x_m, y_m);
-  Eigen::Vector2i index = tMap.worldToGrid(pos);
-  int x = index.x();
-  int y = index.y();
-  int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  int x, y, theta;
+  continuousToDiscrete(x_m, y_m, theta_rad, x, y, theta);
 
   if(!IsWithinMapCell(x,y)){
     ROS_ERROR("ERROR: trying to set a start cell %d %d that is outside of map\n", x,y);
@@ -404,6 +393,7 @@ int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double th
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
   if((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL){
     //have to create a new entry
+    std::cout << "creating hash entry for start " << x << ", " << y << std::endl;
     OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
   }
 
@@ -449,14 +439,14 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntr
   // Do this before, instead of after the call as exceptions will appear only after a StateID2CoordTable
   // entry was created, so that at least StateID2CoordTable and full_body_collision_infos are 
   // consistent.
-  //full_body_collision_infos.push_back(FullBodyCollisionInfo());
+  full_body_traversability_cost_infos.push_back(FullBodyTraversabilityCost());
   EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_lookup(X, Y, Theta);
 
   return he;
 }
 
 EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntry_hash(int X, int Y, int Theta){
-  //full_body_collision_infos.push_back(FullBodyCollisionInfo());
+  full_body_traversability_cost_infos.push_back(FullBodyTraversabilityCost());
   EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_hash(X, Y, Theta);
 
   return he;
@@ -476,10 +466,10 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   Eigen::Vector2f lfWheelCoordinates(lfWheelToGlobal.translation().x(), lfWheelToGlobal.translation().y());
   Eigen::Vector2f rrWheelCoordinates(rrWheelToGlobal.translation().x(), rrWheelToGlobal.translation().y());
   Eigen::Vector2f lrWheelCoordinates(lrWheelToGlobal.translation().x(), lrWheelToGlobal.translation().y());
-  Eigen::Vector2i rfWheelIndex(tMap.worldToGrid(rfWheelCoordinates));
-  Eigen::Vector2i lfWheelIndex(tMap.worldToGrid(lfWheelCoordinates));
-  Eigen::Vector2i rrWheelIndex(tMap.worldToGrid(rrWheelCoordinates));
-  Eigen::Vector2i lrWheelIndex(tMap.worldToGrid(lrWheelCoordinates));
+  Eigen::Vector2i rfWheelIndex = continuousXYToDiscrete(rfWheelCoordinates);
+  Eigen::Vector2i lfWheelIndex = continuousXYToDiscrete(lfWheelCoordinates);
+  Eigen::Vector2i rrWheelIndex = continuousXYToDiscrete(rrWheelCoordinates);
+  Eigen::Vector2i lrWheelIndex = continuousXYToDiscrete(lrWheelCoordinates);
 
   // check if position of the robot centre and the wheel cells are inside the map and the centre cell is not too high
   Eigen::Vector2i index(X, Y);
@@ -495,13 +485,16 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   return cellcost;
 }
 
+ int EnvironmentNavXYThetaLatFlourish::ComputeCosts(int SourceX, int SourceY, int SourceTheta){
+   return 0;
+ }
+
 int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action){
   int cost;
   sbpl_2Dcell_t cell;
   EnvNAVXYTHETALAT3Dcell_t interm3Dcell;
   int i;
   
-
   float startcellcost = GetCellCost(SourceX, SourceY, SourceTheta);
   float endcellcost = GetCellCost(SourceX+action->dX, SourceY+action->dY, action->endtheta);
   
@@ -560,15 +553,17 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   int endTheta = NORMALIZEDISCTHETA(action->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-  if((OutHashEntry = (this->*GetHashEntry)(endX, endY, endTheta)) == NULL) {
-    // might have to create a end entry
-    OutHashEntry = (this->*CreateNewHashEntry)(endX, endY, endTheta);
+  if((OutHashEntry = (this->*GetHashEntry)(SourceX, SourceY, SourceTheta)) == NULL){
+    //have to create a new entry
+    OutHashEntry = (this->*CreateNewHashEntry)(SourceX, SourceY, SourceTheta);
   }
+
+  get_full_body_traversability_cost_info(OutHashEntry);
   //if(in_full_body_collision(OutHashEntry))
   //  return INFINITECOST;
   //
-  return cost;
 
+  return cost;
 }
 
 
@@ -655,7 +650,7 @@ void EnvironmentNavXYThetaLatFlourish::SetConfiguration(int width, int height,
 
 void EnvironmentNavXYThetaLatFlourish::update_planning_scene()
 {
-  return;
+  //return;
   scene_monitor->requestPlanningSceneState(scene_update_name);
   planning_scene_monitor::LockedPlanningSceneRO ps(scene_monitor);
   scene = planning_scene::PlanningScene::clone(ps);
@@ -690,29 +685,34 @@ void EnvironmentNavXYThetaLatFlourish::publish_planning_scene()
 }
 
 
-void EnvironmentNavXYThetaLatFlourish::clear_full_body_collision_infos()
+void EnvironmentNavXYThetaLatFlourish::clear_full_body_traversability_cost_infos()
 {
-  for (size_t i = 0; i < full_body_collision_infos.size(); i++)
+  for (size_t i = 0; i < full_body_traversability_cost_infos.size(); i++)
     {
-      full_body_collision_infos[i].initialized = false;
+      full_body_traversability_cost_infos[i].initialized = false;
     }
 }
 
 
 void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
 {
+  //TODO
+  planningFrameID = "odom";
+
   geometry_msgs::PoseArray msg;
-  msg.header.frame_id = getPlanningScene()->getPlanningFrame();
-  for (size_t id = 0; id < full_body_collision_infos.size(); id++){
-    if (full_body_collision_infos[id].initialized && ! full_body_collision_infos[id].collision){
+  msg.header.frame_id = planningFrameID;//TODO getPlanningScene()->getPlanningFrame();
+  //msg.header.stamp = ros::Time::now();
+  for (size_t id = 0; id < full_body_traversability_cost_infos.size(); id++){
+    if (full_body_traversability_cost_infos[id].initialized && full_body_traversability_cost_infos[id].cost < INFINITECOST){
       EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
       sbpl_xy_theta_pt_t coords = discreteToContinuous(state->X, state->Y, state->Theta);
       msg.poses.push_back(geometry_msgs::Pose());
       geometry_msgs::Pose& pose = msg.poses.back();
-      pose.position.x = coords.x + costmapOffsetX;
-      pose.position.y = coords.y + costmapOffsetY;
-      pose.position.z = 0;
+      pose.position.x = coords.x;
+      pose.position.y = coords.y;
+      pose.position.z = 0.1;
       pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
+      //std::cout << "expanded " << state->X << ", " << state->Y << std::endl;
     }
   }
   pose_array_publisher.publish(msg);
@@ -766,8 +766,7 @@ void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
       if(tMap.cell(i,j).getElevation() != -1000){
 	Eigen::Vector2i index(i,j);
 	geometry_msgs::Point p;
-	p.x = tMap.gridToWorld(index)(0);
-	p.y = tMap.gridToWorld(index)(1);
+	discreteXYToContinuous(i,j, p.x, p.y);
 	p.z = tMap.cell(i,j).getElevation();
 	marker.points.push_back(p);
 	std_msgs::ColorRGBA c;
@@ -822,8 +821,10 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
 
   for(size_t i = 0; i < wheelCells.size(); i++){
     geometry_msgs::Point p;
-    p.x = tMap.gridToWorld(wheelCells[i])(0)-costmapOffsetX;
-    p.y = tMap.gridToWorld(wheelCells[i])(1)-costmapOffsetY;
+    
+    discreteXYToContinuous(wheelCells[i].x(), wheelCells[i].y(), p.x, p.y);
+    p.x -= mapOffsetX; //TODO
+    p.y -= mapOffsetY; //TODO
     p.z = tMap.cell(wheelCells[i]).getElevation();
     marker.points.push_back(p);
     std_msgs::ColorRGBA c;
@@ -842,67 +843,116 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
 sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatFlourish::discreteToContinuous(int x, int y, int theta)
 {
   sbpl_xy_theta_pt_t pose;
-  Eigen::Vector2i index(x, y);
-  Eigen::Vector2f pos = tMap.gridToWorld(index);
-  pose.x = pos.x();
-  pose.y = pos.y();
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  pose.x = DISCXY2CONT(x, tMap.getResolution())+offset.x();
+  pose.y = DISCXY2CONT(y, tMap.getResolution())+offset.y();
   pose.theta = DiscTheta2Cont(theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
   return pose;
 }
 
-bool EnvironmentNavXYThetaLatFlourish::in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state)
+void EnvironmentNavXYThetaLatFlourish::discreteXYToContinuous(int x_d, int y_d, double& x_c, double& y_c)
 {
-  return get_full_body_collision_info(state).collision;
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  x_c = DISCXY2CONT(x_d, tMap.getResolution())+offset.x();
+  y_c = DISCXY2CONT(y_d, tMap.getResolution())+offset.y();
 }
 
-const EnvironmentNavXYThetaLatFlourish::FullBodyCollisionInfo& EnvironmentNavXYThetaLatFlourish::get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state)
+void EnvironmentNavXYThetaLatFlourish::continuousToDiscrete(sbpl_xy_theta_pt_t pose, int& x, int& y, int& theta)
 {
-  ROS_ASSERT_MSG(full_body_collision_infos.size() > state->stateID, "full_body_collision: state_id mismatch!");
-  if (! full_body_collision_infos[state->stateID].initialized)
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  x = CONTXY2DISC(pose.x - offset.x(), tMap.getResolution());
+  y = CONTXY2DISC(pose.y - offset.y(), tMap.getResolution());
+  theta = ContTheta2Disc(pose.theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
+}
+
+void EnvironmentNavXYThetaLatFlourish::continuousToDiscrete(double x_c, double y_c, double theta_c, int& x, int& y, int& theta)
+{
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  x = CONTXY2DISC(x_c - offset.x(), tMap.getResolution());
+  y = CONTXY2DISC(y_c - offset.y(), tMap.getResolution());
+  theta = ContTheta2Disc(theta_c, EnvNAVXYTHETALATCfg.NumThetaDirs);
+}
+
+Eigen::Vector2i EnvironmentNavXYThetaLatFlourish::continuousXYToDiscrete(Eigen::Vector2f xy_c)
+{
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  Eigen::Vector2i xy_d;
+  xy_d.x() = CONTXY2DISC(xy_c.x() - offset.x(), tMap.getResolution());
+  xy_d.y() = CONTXY2DISC(xy_c.y() - offset.y(), tMap.getResolution());
+  return xy_d;
+}
+
+bool EnvironmentNavXYThetaLatFlourish::in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state)
+{
+  return (get_full_body_traversability_cost_info(state).cost < INFINITECOST);
+}
+
+const EnvironmentNavXYThetaLatFlourish::FullBodyTraversabilityCost& EnvironmentNavXYThetaLatFlourish::get_full_body_traversability_cost_info(EnvNAVXYTHETALATHashEntry_t* state)
+{
+  ROS_ASSERT_MSG(full_body_traversability_cost_infos.size() > state->stateID, "full_body_collision: state_id mismatch!");
+  if (! full_body_traversability_cost_infos[state->stateID].initialized)
     {
-      sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
+      //sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
       // Static uses this to get an initialized state from the scene
       // that we can subsequently change
-      static robot_state::RobotState robot_state = scene->getCurrentState();
-      robot_state.setVariablePosition("world_joint/x", pose.x + costmapOffsetX);
-      robot_state.setVariablePosition("world_joint/y", pose.y + costmapOffsetY);
-      robot_state.setVariablePosition("world_joint/theta", pose.theta);
-      robot_state.update();
-      full_body_collision_infos[state->stateID].initialized = true;
-      full_body_collision_infos[state->stateID].collision = getPlanningScene()->isStateColliding(robot_state);
+
+      full_body_traversability_cost_infos[state->stateID].initialized = true;
+      //full_body_collision_infos[state->stateID].collision = getPlanningScene()->isStateColliding(robot_state);
+      full_body_traversability_cost_infos[state->stateID].cost = 1;
+      double x, y;
+      discreteXYToContinuous(state->X, state->Y, x, y);
+      //std::cout << "initializing " << state->X << ", " << state->Y 
+      //		<< "; " << x << ", " << y 
+      //		<< std::endl;
       //ROS_INFO("get_full_body_collision_info for (%.2f, %.2f, %.2f) = %d",
       //        pose.x + costmapOffsetX, pose.y + costmapOffsetY,
       //        pose.theta, full_body_collision_infos[state->stateID].collision);
     }
-  return full_body_collision_infos[state->stateID];
+  return full_body_traversability_cost_infos[state->stateID];
 }
 
 void EnvironmentNavXYThetaLatFlourish::computeWheelPositions(){
-  tf::TransformListener tfListener;
-  tf::StampedTransform frWheelTofrArmUpperLinkT, flWheelToflArmUpperLinkT, rrWheelTorrArmUpperLinkT, rlWheelTorlArmUpperLinkT, frArmUpperToBaseLinkT;
+  tf::StampedTransform frWheelTofrArmUpperLinkT, flWheelToflArmUpperLinkT, rrWheelTorrArmUpperLinkT, rlWheelTorlArmUpperLinkT, flArmUpperToBaseLinkT, rlArmUpperToBaseLinkT, rrArmUpperToBaseLinkT, frArmUpperToBaseLinkT;
 
   //ros::Time now = ros::Time::now();
 
   try{
-    tfListener.waitForTransform("/wheel_fr_link",  "/arm_fr_upper_link", 
+    tfListener->waitForTransform("/wheel_fr_link",  "/arm_fr_upper_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener.lookupTransform("/wheel_fr_link",  "/arm_fr_upper_link", 
+    tfListener->lookupTransform("/wheel_fr_link",  "/arm_fr_upper_link", 
     				 ros::Time(0), frWheelTofrArmUpperLinkT);
-    //tfListener.waitForTransform("/wheel_fl_link",  "/arm_fl_upper_link", 
+    //tfListener->waitForTransform("/wheel_fl_link",  "/arm_fl_upper_link", 
     //				 ros::Time(0), ros::Duration(0.5));
-    //tfListener.lookupTransform("/wheel_fl_link",  "/arm_fl_upper_link", 
+    //tfListener->lookupTransform("/wheel_fl_link",  "/arm_fl_upper_link", 
     //				 ros::Time(0), flWheelToflArmUpperLinkT);
-    //tfListener.waitForTransform("/wheel_rr_link",  "/arm_rr_upper_link", 
+    //tfListener->waitForTransform("/wheel_rr_link",  "/arm_rr_upper_link", 
     //				 ros::Time(0), ros::Duration(0.5));
-    //tfListener.lookupTransform("/wheel_rr_link",  "/arm_rr_upper_link", 
+    //tfListener->lookupTransform("/wheel_rr_link",  "/arm_rr_upper_link", 
     //				 ros::Time(0), rrWheelTorrArmUpperLinkT);
-    //tfListener.waitForTransform("/wheel_rl_link",  "/arm_rl_upper_link", 
+    //tfListener->waitForTransform("/wheel_rl_link",  "/arm_rl_upper_link", 
     //				 ros::Time(0), ros::Duration(0.5));
-    //tfListener.lookupTransform("/wheel_rl_link",  "/arm_rl_upper_link", 
+    //tfListener->lookupTransform("/wheel_rl_link",  "/arm_rl_upper_link", 
     //ros::Time(0), rlWheelTorlArmUpperLinkT);
-    tfListener.waitForTransform("/arm_fr_upper_link", "/base_link",
+    tfListener->waitForTransform("/arm_fl_upper_link", "/base_link",
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener.lookupTransform("/arm_fr_upper_link",  "/base_link", 
+    tfListener->lookupTransform("/arm_fl_upper_link",  "/base_link", 
+    				 ros::Time(0), flArmUpperToBaseLinkT);
+    tfListener->waitForTransform("/arm_rl_upper_link", "/base_link",
+    				 ros::Time(0), ros::Duration(1.5));
+    tfListener->lookupTransform("/arm_rl_upper_link",  "/base_link", 
+    				 ros::Time(0), rlArmUpperToBaseLinkT);
+    tfListener->waitForTransform("/arm_rr_upper_link", "/base_link",
+    				 ros::Time(0), ros::Duration(1.5));
+    tfListener->lookupTransform("/arm_rr_upper_link",  "/base_link", 
+    				 ros::Time(0), rrArmUpperToBaseLinkT);
+    tfListener->waitForTransform("/arm_fr_upper_link", "/base_link",
+    				 ros::Time(0), ros::Duration(1.5));
+    tfListener->lookupTransform("/arm_fr_upper_link",  "/base_link", 
     				 ros::Time(0), frArmUpperToBaseLinkT);
   }catch (tf::TransformException ex){
     ROS_ERROR("%s",ex.what());
@@ -913,50 +963,181 @@ void EnvironmentNavXYThetaLatFlourish::computeWheelPositions(){
   //Eigen::Isometry3f flWheelToflArmUpperLink = stampedTfToIsometry(flWheelToflArmUpperLinkT);
   //Eigen::Isometry3f rrWheelTorrArmUpperLink = stampedTfToIsometry(rrWheelTorrArmUpperLinkT);
   //Eigen::Isometry3f rlWheelTorlArmUpperLink = stampedTfToIsometry(rlWheelTorlArmUpperLinkT);
-  Eigen::Isometry3f frArmUpperToBaseLink = stampedTfToIsometry(frArmUpperToBaseLinkT);
+  Eigen::Vector2f flArmUpperToBaseLinkTranslation(stampedTfToIsometry(flArmUpperToBaseLinkT).translation().x(),
+						  stampedTfToIsometry(flArmUpperToBaseLinkT).translation().y());
+  Eigen::Vector2f rlArmUpperToBaseLinkTranslation(stampedTfToIsometry(rlArmUpperToBaseLinkT).translation().x(),
+						  stampedTfToIsometry(rlArmUpperToBaseLinkT).translation().y());
+  Eigen::Vector2f rrArmUpperToBaseLinkTranslation(stampedTfToIsometry(rrArmUpperToBaseLinkT).translation().x(),
+						  stampedTfToIsometry(rrArmUpperToBaseLinkT).translation().y());
+  Eigen::Vector2f frArmUpperToBaseLinkTranslation(stampedTfToIsometry(frArmUpperToBaseLinkT).translation().x(),
+						  stampedTfToIsometry(frArmUpperToBaseLinkT).translation().y());
 
   float xlength = frWheelTofrArmUpperLink.translation().x();
   float ylength = frWheelTofrArmUpperLink.translation().y();
   float armLength = sqrt(xlength*xlength + ylength*ylength);
-  int discArmLength = ceil(armLength/tMap.getResolution());
+  //int discArmLength = ceil(armLength/tMap.getResolution());
+  int discArmLength = ceil(armLength/tMap.getResolution())+1;
 
-  int xBaseOffset = abs(frArmUpperToBaseLink.translation().x()/tMap.getResolution());
-  int yBaseOffset = abs(frArmUpperToBaseLink.translation().y()/tMap.getResolution());
   std::cerr << "armlength = " << armLength << " in cells = " << discArmLength 
 	    << ", xlength = " << xlength << ", ylength = " << ylength 
-	    << ", xoffset = " << frArmUpperToBaseLink.translation().x() << ", yoffset = " << frArmUpperToBaseLink.translation().y()
-	    << ", xoffsetcells = " << xBaseOffset << ", yoffsetcells = " << yBaseOffset
 	    << std::endl;
-  
-  float xStart, xEnd, yStart, yEnd;
-  std::vector<Eigen::Vector2i> possibleWheelCells;
-  //Eigen::Vector2i frArmUpperToBaseLinkTranslation;
-  yStart = armLength;
 
-  for(int i = 0; i < discArmLength; ++i){
-    xStart = i*tMap.getResolution();
-    xEnd = (i+1)*tMap.getResolution();
-    if(xEnd < armLength){
+  std::vector<Eigen::Vector2i> possibleRelativeWheelCells;
+  float xEnd, yStart, yEnd;
+  //float xStart;
+  yStart = 0;
+
+  //for(int i = discArmLength-1; i >= 0; --i){
+  for(int i = discArmLength; i >= 0; --i){
+    xEnd = (i-1)*tMap.getResolution();
+    if(xEnd > armLength){
+      continue;
+    }
+    if(xEnd > 0){
       yEnd = sqrt(armLength*armLength - xEnd*xEnd);
     }else{
-      yEnd = 0;
+      yEnd = armLength;
     }
-    int yStartCell = yStart/tMap.getResolution();
-    int yEndCell = yEnd/tMap.getResolution();
-    for(int j = yEndCell; j <= yStartCell; ++j){
-      possibleWheelCells.push_back(Eigen::Vector2i(i+xBaseOffset, -j-yBaseOffset));
-      possibleWheelCells.push_back(Eigen::Vector2i(i+xBaseOffset, yBaseOffset+j));
-      possibleWheelCells.push_back(Eigen::Vector2i(-i-xBaseOffset, j+yBaseOffset));
-      possibleWheelCells.push_back(Eigen::Vector2i(-i-xBaseOffset, -yBaseOffset-j));
-      std::cerr << "relative wheel cell " << i << ", " << j << std::endl;
-      std::cerr << "fr wheel cell " << i+xBaseOffset << ", " << -j-yBaseOffset << std::endl;
-
-     // std::cerr << "got wheel cells " << i+xBaseOffset << ", " << j-yBaseOffset << "; "
-     //		<< i+xBaseOffset << ", " << yBaseOffset-j << "; "
-     //		<< -i-xBaseOffset << ", " << j-yBaseOffset << "; "
-     //		<< -i-xBaseOffset << ", " << yBaseOffset-j << std::endl;
+    //xStart = i*tMap.getResolution();
+    
+    int yStartCell = ceil(yStart/tMap.getResolution());
+    int yEndCell = ceil(yEnd/tMap.getResolution());
+    //std::cout << "x start = " << xStart << ", x end = " << xEnd << std::endl;
+    //std::cout << "y start = " << yStart << ", y end = " << yEnd << std::endl;
+    std::cout << "y start cell = " << yStartCell << ", yend cell = " << yEndCell << std::endl;
+    for(int j = yStartCell; j <= yEndCell; ++j){
+      possibleRelativeWheelCells.push_back(Eigen::Vector2i(i, j));
+      std::cout << "pushing " << i << ", " << j << std::endl;
     }
     yStart = yEnd;
   }
-  publish_wheel_cells(possibleWheelCells);
+
+  int numCells = possibleRelativeWheelCells.size();
+  for(int i = 0; i < numCells; ++i){
+    possibleRelativeWheelCells.push_back(Eigen::Vector2i(-possibleRelativeWheelCells[numCells-i-1].x(), possibleRelativeWheelCells[numCells-i-1].y()));
+  }
+  for(int i = 0; i < numCells; ++i){
+    possibleRelativeWheelCells.push_back(Eigen::Vector2i(-possibleRelativeWheelCells[i].x(), -possibleRelativeWheelCells[i].y()));
+  }
+  for(int i = 0; i < numCells; ++i){
+    possibleRelativeWheelCells.push_back(Eigen::Vector2i(possibleRelativeWheelCells[numCells-i-1].x(), -possibleRelativeWheelCells[numCells-i-1].y()));
+  }
+  publish_wheel_cells(possibleRelativeWheelCells);
+
+  std::vector<std::vector<Eigen::Vector2i> > possibleWheelCells;
+  Eigen::Matrix2f rotation;
+
+  //std::vector<Eigen::Vector2i> flStartCells, flEndCells;
+  for(size_t theta = 0; theta < EnvNAVXYTHETALATCfg.NumThetaDirs; ++theta){
+    std::vector<Eigen::Vector2i> possibleWheelCellsi;
+    float endTheta = DiscTheta2Cont(theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
+    float startTheta = endTheta - M_PI/2.;
+    if(startTheta < -M_PI){
+      startTheta += 2*M_PI;
+    }else if(startTheta > M_PI){
+      startTheta -= 2*M_PI;
+    }
+    if(endTheta > M_PI){
+      endTheta -= 2*M_PI;
+    }
+    rotation(0,0) = cos(endTheta);
+    rotation(0,1) = -sin(endTheta);
+    rotation(1,0) = sin(endTheta);
+    rotation(1,1) = cos(endTheta);
+    
+    Eigen::Vector2f rotatedflWheelTranslation = rotation*flArmUpperToBaseLinkTranslation;
+    Eigen::Vector2f rotatedrlWheelTranslation = rotation*rlArmUpperToBaseLinkTranslation;
+    Eigen::Vector2f rotatedrrWheelTranslation = rotation*rrArmUpperToBaseLinkTranslation;
+    Eigen::Vector2f rotatedfrWheelTranslation = rotation*frArmUpperToBaseLinkTranslation;
+
+    float startx = armLength * cos(startTheta);
+    float endx = armLength * cos(endTheta);
+    float starty = armLength * sin(startTheta);
+    float endy = armLength * sin(endTheta);
+    
+    Eigen::Vector2i startCell(ceil(startx/tMap.getResolution()), ceil(starty/tMap.getResolution()));
+    Eigen::Vector2i endCell(ceil(endx/tMap.getResolution()), ceil(endy/tMap.getResolution()));
+
+    std::vector<Eigen::Vector2i>::iterator start = std::find(possibleRelativeWheelCells.begin(), possibleRelativeWheelCells.end(), startCell);
+    if(start == possibleRelativeWheelCells.end()){
+      std::cerr << "ERROR: startcell in possible relative wheel cells could not be found!" << std::endl;
+      std::cerr << "looking for cell " << startCell.x() << ", " << startCell.y() << " in cells " << std::endl;
+      for(size_t i = 0; i < possibleRelativeWheelCells.size(); ++i){
+	std::cout << possibleRelativeWheelCells[i].x() << ", " << possibleRelativeWheelCells[i].y() << std::endl;
+      }
+    }
+
+    std::vector<Eigen::Vector2i>::iterator it = start;
+    int count = 0;
+    do{
+      if(count < possibleRelativeWheelCells.size()/4){
+	possibleWheelCellsi.push_back(Eigen::Vector2i(rotatedflWheelTranslation.x(), rotatedflWheelTranslation.y())+*it);
+      }else if(count < possibleRelativeWheelCells.size()/2){
+	possibleWheelCellsi.push_back(Eigen::Vector2i(-rotatedrlWheelTranslation.x(), rotatedrlWheelTranslation.y())+*it);
+      }else if(count < 3*possibleRelativeWheelCells.size()/4){
+	possibleWheelCellsi.push_back(Eigen::Vector2i(-rotatedrrWheelTranslation.x(), -rotatedrrWheelTranslation.y())+*it);
+      }else{
+	possibleWheelCellsi.push_back(Eigen::Vector2i(rotatedfrWheelTranslation.x(), -rotatedfrWheelTranslation.y())+*it);
+      }
+      ++it;
+      if(it == possibleRelativeWheelCells.end()){
+	it = possibleRelativeWheelCells.begin();
+      }
+      ++count;
+    } while(it != start);
+    possibleWheelCells.push_back(possibleWheelCellsi);
+  }
+  publish_wheel_cells(possibleWheelCells[0]);
+}
+
+moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatFlourish::pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const
+{
+  moveit_msgs::DisplayTrajectory dtraj;
+  dtraj.model_id = "robot";    // FIXME this is just for matching?
+  if(path.empty())
+    return dtraj;
+
+  tf::StampedTransform baseFootprintToBaseLink;
+  try{
+    tfListener->waitForTransform("/base_footprint", "/base_link",
+				 ros::Time(0), ros::Duration(0.1));
+    tfListener->lookupTransform("/base_footprint", "/base_link",
+				ros::Time(0), baseFootprintToBaseLink);
+  }catch (tf::TransformException ex){
+    ROS_ERROR("%s",ex.what());
+    return dtraj;
+  }
+
+
+  // Do NOT update the scene. This should be the path that we planned with before.
+  moveit::core::robotStateToRobotStateMsg(scene->getCurrentState(), dtraj.trajectory_start);
+  moveit_msgs::RobotTrajectory traj;
+  traj.multi_dof_joint_trajectory.header = path.front().header;   // all poses in path should be in the same frame
+  traj.multi_dof_joint_trajectory.joint_names.push_back("world_joint");
+  tf::Transform lastPose;
+  for(unsigned int i = 0; i < path.size(); ++i) {
+    trajectory_msgs::MultiDOFJointTrajectoryPoint pt;
+    geometry_msgs::Transform tf;
+    tf.translation.x = path[i].pose.position.x;
+    tf.translation.y = path[i].pose.position.y;
+    tf.translation.z = path[i].pose.position.z;// + baseFootprintToBaseLink.getOrigin().z();
+    tf.rotation = path[i].pose.orientation;
+
+    if(i > 0) {
+      tf::Transform curPose;
+      tf::transformMsgToTF(tf, curPose);
+      tf::Transform delta = lastPose.inverseTimes(curPose);
+      if(hypot(delta.getOrigin().x(), delta.getOrigin().y()) < 0.05 &&
+	 tf::getYaw(delta.getRotation()) < 0.2)
+	continue;
+    }
+
+    pt.transforms.push_back(tf);
+    tf::transformMsgToTF(tf, lastPose);
+
+    traj.multi_dof_joint_trajectory.points.push_back(pt);
+  }
+
+  dtraj.trajectory.push_back(traj);
+  return dtraj;
 }

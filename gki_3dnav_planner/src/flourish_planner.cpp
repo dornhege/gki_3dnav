@@ -128,6 +128,8 @@ namespace flourish_planner{
       sbpl_cost_multiplier_ = (unsigned char) (costmap_2d::INSCRIBED_INFLATED_OBSTACLE / inscribed_inflated_obstacle_ + 1);
       ROS_DEBUG("SBPL: lethal: %uz, inscribed inflated: %uz, multiplier: %uz", lethal_obstacle, inscribed_inflated_obstacle_, sbpl_cost_multiplier_);
 
+      std::cout << "initial epsilon = " << initial_epsilon_ << std::endl;
+
       costmap_ros_ = costmap_ros;
 
       std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
@@ -241,6 +243,7 @@ namespace flourish_planner{
       ROS_INFO("[gki_3dnav_planner] Initialized successfully");
       plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
       //stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
+      traj_pub_ = private_nh.advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
 
       initialized_ = true;
     }
@@ -314,10 +317,15 @@ namespace flourish_planner{
     }*/
   bool FlourishPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
   {
-    //env_->clear_full_body_collision_infos();
-    //env_->update_planning_scene();
+    env_->clear_full_body_traversability_cost_infos();
+    env_->update_planning_scene();
     //env_->publish_planning_scene();
-    return makePlan_(start, goal, plan);
+    bool madePlan = makePlan_(start, goal, plan);
+    if(madePlan){
+      moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
+      traj_pub_.publish(traj);
+    }
+    return madePlan;
   }
 
   bool FlourishPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan)
@@ -346,7 +354,7 @@ namespace flourish_planner{
 
     planner_->force_planning_from_scratch();
     try{
-      int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
+      int ret = env_->SetStart(start.pose.position.x, start.pose.position.y, theta_start);
       //std::cout << "planning from start " << start.pose.position.x << ", " << start.pose.position.y << std::endl;
       if (ret < 0 || planner_->set_start(ret) == 0){
 	ROS_ERROR("ERROR: failed to set start state\n");
@@ -358,7 +366,7 @@ namespace flourish_planner{
     }
 
     try{
-      int ret = env_->SetGoal(goal.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), goal.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_goal);
+      int ret = env_->SetGoal(goal.pose.position.x, goal.pose.position.y, theta_goal);
       if (ret < 0 || planner_->set_goal(ret) == 0){
 	ROS_ERROR("ERROR: failed to set goal state\n");
 	return false;
@@ -418,7 +426,7 @@ namespace flourish_planner{
     }
 
     //setting planner parameters
-    ROS_DEBUG("allocated:%f, init eps:%f\n", allocated_time_, initial_epsilon_);
+    ROS_INFO("allocated:%f, init eps:%f\n", allocated_time_, initial_epsilon_);
     planner_->set_initialsolution_eps(initial_epsilon_);
     planner_->set_search_mode(false);
 
@@ -450,7 +458,7 @@ namespace flourish_planner{
     }
     // if the plan has zero points, add a single point to make move_base happy
     if (sbpl_path.size() == 0){
-      EnvNAVXYTHETALAT3Dpt_t s(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
+      EnvNAVXYTHETALAT3Dpt_t s(start.pose.position.x, start.pose.position.y, theta_start);
       sbpl_path.push_back(s);
     }
 
@@ -468,8 +476,8 @@ namespace flourish_planner{
       pose.header.stamp = plan_time;
       pose.header.frame_id = costmap_ros_->getGlobalFrameID();
 
-      pose.pose.position.x = sbpl_path[i].x + costmap_ros_->getCostmap()->getOriginX();
-      pose.pose.position.y = sbpl_path[i].y + costmap_ros_->getCostmap()->getOriginY();
+      pose.pose.position.x = sbpl_path[i].x;// + costmap_ros_->getCostmap()->getOriginX();
+      pose.pose.position.y = sbpl_path[i].y;// + costmap_ros_->getCostmap()->getOriginY();
       pose.pose.position.z = start.pose.position.z;
 
       tf::Quaternion temp;
@@ -487,7 +495,7 @@ namespace flourish_planner{
     publishStats(solution_cost, sbpl_path.size(), start, goal);
 
     // DeBUG
-    //env_->publish_expanded_states();
+    env_->publish_expanded_states();
     return true;
   }
 }
