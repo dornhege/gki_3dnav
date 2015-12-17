@@ -24,6 +24,49 @@ void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization
   ROS_INFO_STREAM( feedback->marker_name << " is now at "
 		   << feedback->pose.position.x << ", " << feedback->pose.position.y
 		   << ", " << feedback->pose.position.z );
+
+  int aind;
+
+  //clear the successor array
+  //SuccIDV->clear();
+  //CostV->clear();
+  //SuccIDV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
+  //CostV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
+  //if (actionV != NULL) {
+  //  actionV->clear();
+  //  actionV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
+  //}
+  //
+  ////get X, Y for the state
+  //EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[SourceStateID];
+  int x, y;
+  
+
+  //iterate through actions
+  /*for (aind = 0; aind < EnvNAVXYTHETALATCfg.actionwidth; aind++) {
+    EnvNAVXYTHETALATAction_t* nav3daction = &EnvNAVXYTHETALATCfg.ActionsV[(unsigned int)HashEntry->Theta][aind];
+    int newX = HashEntry->X + nav3daction->dX;
+    int newY = HashEntry->Y + nav3daction->dY;
+    int newTheta = NORMALIZEDISCTHETA(nav3daction->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
+
+    //skip the invalid cells
+    if (!IsValidCell(newX, newY)) continue;
+
+    //get cost
+    int cost = GetActionCost(HashEntry->X, HashEntry->Y, HashEntry->Theta, nav3daction);
+    if (cost >= INFINITECOST) continue;
+
+    EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
+    if ((OutHashEntry = (this->*GetHashEntry)(newX, newY, newTheta)) == NULL) {
+      //have to create a new entry
+      OutHashEntry = (this->*CreateNewHashEntry)(newX, newY, newTheta);
+    }
+
+    SuccIDV->push_back(OutHashEntry->stateID);
+    CostV->push_back(cost);
+    if (actionV != NULL) actionV->push_back(nav3daction);
+    }*/
+
 }
 
 Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
@@ -383,6 +426,14 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   // add the control to the interactive marker
   int_marker.controls.push_back(control);
   
+  control.orientation.w = 1;
+  control.orientation.x = 0;
+  control.orientation.y = 1;
+  control.orientation.z = 0;
+  control.name = "rotate_y";
+  control.interaction_mode = visualization_msgs::InteractiveMarkerControl::ROTATE_AXIS;
+  int_marker.controls.push_back(control);
+
   control.orientation.w = 1;
   control.orientation.x = 0;
   control.orientation.y = 0;
