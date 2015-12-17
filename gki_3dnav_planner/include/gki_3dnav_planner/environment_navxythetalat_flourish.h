@@ -11,6 +11,8 @@
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <sbpl/utils/key.h>
 
+#include <interactive_markers/interactive_marker_server.h>
+
 // TODO
 // Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target
 // check interaction with planning scene from up planner class
@@ -26,6 +28,7 @@
 class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 {
  public:
+  void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback );
   bool IsValidCell(int X, int Y);
   bool IsWithinMapCell(int X, int Y);
   bool IsValidConfiguration(int X, int Y, int Theta);
@@ -98,6 +101,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   std::vector<std::string> allowed_collision_links;
 
   ros::Publisher pose_array_publisher;
+  ros::Publisher nontravpose_array_publisher;
 
 
   sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
@@ -126,6 +130,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   tf::TransformListener* tfListener;
 
   std::string planningFrameID;
+  interactive_markers::InteractiveMarkerServer* interserver;
 };
 
 #endif // ENVIRONMENT_NAVXYTHETALAT_FLOURISH_H

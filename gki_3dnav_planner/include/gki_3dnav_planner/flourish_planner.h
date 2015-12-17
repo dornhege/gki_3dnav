@@ -20,6 +20,7 @@ using namespace std;
 //global representation
 #include <nav_core/base_global_planner.h>
 
+
 namespace flourish_planner
 {
 

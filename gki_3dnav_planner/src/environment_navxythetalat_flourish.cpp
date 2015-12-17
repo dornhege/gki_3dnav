@@ -13,8 +13,18 @@
 
 #include <basics/transformationRepresentation.h>
 
+#include <interactive_markers/interactive_marker_server.h>
+
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
+
+
+void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback )
+{
+  ROS_INFO_STREAM( feedback->marker_name << " is now at "
+		   << feedback->pose.position.x << ", " << feedback->pose.position.y
+		   << ", " << feedback->pose.position.z );
+}
 
 Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
   tf::Vector3 trans = trafo.getOrigin();
@@ -270,7 +280,6 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
 EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap):
   tMap(tMap)
 {
-  std::cout << "CREATING ENVIRONMENT" << std::endl;
   robotHeight = 1.2;
   robotBodyHeight = 0.2; 
   robotBodyWidth = 2.0; 
@@ -330,6 +339,64 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
   traversable_map_publisher = nhPriv.advertise<visualization_msgs::Marker>("travmap", 1, true); 
   pose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
+  nontravpose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
+
+  // create an interactive marker server on the topic namespace simple_marker
+  interserver = new interactive_markers::InteractiveMarkerServer("simple_marker");
+
+  // create an interactive marker for our server
+  visualization_msgs::InteractiveMarker int_marker;
+  int_marker.header.frame_id = "odom";
+  int_marker.header.stamp=ros::Time::now();
+  int_marker.name = "my_marker";
+  int_marker.description = "Simple 1-DOF Control";
+
+  // create a grey box marker
+  visualization_msgs::Marker box_marker;
+  box_marker.type = visualization_msgs::Marker::CUBE;
+  box_marker.scale.x = 0.45;
+  box_marker.scale.y = 0.45;
+  box_marker.scale.z = 0.45;
+  box_marker.color.r = 0.5;
+  box_marker.color.g = 0.5;
+  box_marker.color.b = 0.5;
+  box_marker.color.a = 1.0;
+
+  // create a non-interactive control which contains the box
+  visualization_msgs::InteractiveMarkerControl box_control;
+  box_control.always_visible = true;
+  box_control.markers.push_back( box_marker );
+
+  // add the control to the interactive marker
+  int_marker.controls.push_back( box_control );
+
+  // create a control which will move the box
+  // this control does not contain any markers,
+  // which will cause RViz to insert two arrows
+  visualization_msgs::InteractiveMarkerControl control;
+  control.orientation.w = 1;
+  control.orientation.x = 1;
+  control.orientation.y = 0;
+  control.orientation.z = 0;
+  control.name = "move_x";
+  control.interaction_mode = visualization_msgs::InteractiveMarkerControl::MOVE_AXIS;
+  // add the control to the interactive marker
+  int_marker.controls.push_back(control);
+  
+  control.orientation.w = 1;
+  control.orientation.x = 0;
+  control.orientation.y = 0;
+  control.orientation.z = 1;
+  control.name = "move_z";
+  control.interaction_mode = visualization_msgs::InteractiveMarkerControl::MOVE_AXIS;
+  int_marker.controls.push_back(control);
+
+  // add the interactive marker to our collection &
+  // tell the server to call processFeedback() when feedback arrives for it
+  interserver->insert(int_marker, boost::bind(&EnvironmentNavXYThetaLatFlourish::processMarkerFeedback, this, _1));
+
+  // 'commit' changes and send to all clients
+  interserver->applyChanges();
 }
 
 //returns the stateid if success, and -1 otherwise
@@ -478,11 +545,13 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
      || !tMap.isInside(rrWheelIndex) || !tMap.isInside(lrWheelIndex))
     return INFINITECOST;
   
-  float cellcost = 1.f/tMap.cell(rfWheelIndex.x(), rfWheelIndex.y()).getDistToObstacle()
+  return 1;
+  // TODO: compute sensible cost
+  /*float cellcost = 1.f/tMap.cell(rfWheelIndex.x(), rfWheelIndex.y()).getDistToObstacle()
       + 1.f/tMap.cell(lfWheelIndex.x(), lfWheelIndex.y()).getDistToObstacle()
       + 1.f/tMap.cell(rrWheelIndex.x(), rrWheelIndex.y()).getDistToObstacle()
       + 1.f/tMap.cell(lrWheelIndex.x(), lrWheelIndex.y()).getDistToObstacle();
-  return cellcost;
+      return cellcost;*/
 }
 
  int EnvironmentNavXYThetaLatFlourish::ComputeCosts(int SourceX, int SourceY, int SourceTheta){
@@ -700,7 +769,9 @@ void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
   planningFrameID = "odom";
 
   geometry_msgs::PoseArray msg;
+  geometry_msgs::PoseArray nontravmsg;
   msg.header.frame_id = planningFrameID;//TODO getPlanningScene()->getPlanningFrame();
+  nontravmsg.header.frame_id = planningFrameID;//TODO getPlanningScene()->getPlanningFrame();
   //msg.header.stamp = ros::Time::now();
   for (size_t id = 0; id < full_body_traversability_cost_infos.size(); id++){
     if (full_body_traversability_cost_infos[id].initialized && full_body_traversability_cost_infos[id].cost < INFINITECOST){
@@ -713,9 +784,21 @@ void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
       pose.position.z = 0.1;
       pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
       //std::cout << "expanded " << state->X << ", " << state->Y << std::endl;
+    }else if(full_body_traversability_cost_infos[id].initialized){
+      std::cout << "initialized but non-traversable " << std::endl;
+      EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
+      sbpl_xy_theta_pt_t coords = discreteToContinuous(state->X, state->Y, state->Theta);
+      nontravmsg.poses.push_back(geometry_msgs::Pose());
+      geometry_msgs::Pose& pose = msg.poses.back();
+      pose.position.x = coords.x;
+      pose.position.y = coords.y;
+      pose.position.z = 0.1;
+      pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
+      //std::cout << "expanded " << state->X << ", " << state->Y << std::endl;
     }
   }
   pose_array_publisher.publish(msg);
+  nontravpose_array_publisher.publish(nontravmsg);
 }
 
 void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
