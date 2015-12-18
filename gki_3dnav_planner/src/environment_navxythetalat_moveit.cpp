@@ -187,7 +187,29 @@ void EnvironmentNavXYThetaLatMoveit::publish_expanded_states()
     pose_array_publisher.publish(msg);
 }
 
-sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatMoveit::discreteToContinuous(int x, int y, int theta)
+// TODO others + cleanup iface + internally only use these
+bool EnvironmentNavXYThetaLatMoveit::gridToWorld(int X, int Y, int Theta, double & x, double & y, double & theta) const
+{
+    sbpl_xy_theta_pt_t pt = discreteToContinuous(X, Y, Theta);
+    x = pt.x + costmapOffsetX;
+    y = pt.y + costmapOffsetY;
+    theta = pt.theta;
+
+    return true;    // TODO check in map
+}
+
+geometry_msgs::Pose EnvironmentNavXYThetaLatMoveit::poseFromStateID(int stateID) const
+{
+    EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[stateID];
+    geometry_msgs::Pose pose;
+    pose.position.z = 0;
+    double theta;
+    gridToWorld(state->X, state->Y, state->Theta, pose.position.x, pose.position.y, theta);
+    pose.orientation = tf::createQuaternionMsgFromYaw(theta);
+    return pose;
+}
+
+sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatMoveit::discreteToContinuous(int x, int y, int theta) const
 {
     sbpl_xy_theta_pt_t pose;
     pose.x = DISCXY2CONT(x, EnvNAVXYTHETALATCfg.cellsize_m);

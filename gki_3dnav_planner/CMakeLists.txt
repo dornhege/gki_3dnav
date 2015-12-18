@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_srvs
   nav_msgs
   visualization_msgs
+  color_tools
   interactive_markers
   freespace_mechanism_heuristic
 )

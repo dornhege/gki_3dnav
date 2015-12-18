@@ -78,6 +78,8 @@ private:
 	unsigned char costMapCostToSBPLCost(unsigned char newcost);
 	void publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal);
 
+    void publish_expansions();
+
 private:
 	bool initialized_;
     ros::NodeHandle* private_nh_;
@@ -107,6 +109,7 @@ private:
 	ros::Publisher plan_pub_;
     ros::Publisher traj_pub_;
 	ros::Publisher stats_publisher_;
+    ros::Publisher expansions_publisher_;
 
     ros::ServiceServer srv_sample_poses_;
 

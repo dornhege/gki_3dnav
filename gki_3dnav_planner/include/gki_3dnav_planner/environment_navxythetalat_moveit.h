@@ -33,6 +33,9 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_lookup(int X, int Y, int Theta);
         virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_hash(int X, int Y, int Theta);
 
+        bool gridToWorld(int X, int Y, int Theta, double & x, double & y, double & theta) const;
+        geometry_msgs::Pose poseFromStateID(int stateID) const;
+
         virtual void clear_full_body_collision_infos();
         virtual void publish_expanded_states();
 
@@ -82,7 +85,7 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
 
         ros::Publisher pose_array_publisher;
 
-        sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
+        sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta) const;
 
         bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);
         const FullBodyCollisionInfo& get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state);

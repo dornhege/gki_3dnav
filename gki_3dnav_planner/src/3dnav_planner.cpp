@@ -40,7 +40,11 @@
 #include <nav_msgs/Path.h>
 #include <gki_3dnav_planner/PlannerStats.h>
 #include <sbpl/planners/planner.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <sstream>
+#include <iomanip>
 
+#include "color_tools/color_tools.h"
 #include <costmap_2d/inflation_layer.h>
 #include <eigen_conversions/eigen_msg.h>
 
@@ -124,6 +128,8 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 		double nominalvel_mpersecs, timetoturn45degsinplace_secs;
 		private_nh_->param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
 		private_nh_->param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
+        bool track_expansions;
+        private_nh_->param("track_expansions", track_expansions, false);
 
 		int lethal_obstacle;
 		private_nh_->param("lethal_obstacle", lethal_obstacle, 20);
@@ -199,6 +205,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 		{
 			ROS_INFO("Planning with ARA*");
 			planner_ = new ARAPlanner(env_, forward_search_);
+            dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
 		}
 		else if ("ADPlanner" == planner_type_)
 		{
@@ -215,6 +222,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 		plan_pub_ = private_nh_->advertise<nav_msgs::Path>("plan", 1);
 		stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
         traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
+        expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
 
         srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
                 &GKI3dNavPlanner::sampleValidPoses, this);
@@ -564,7 +572,73 @@ bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs:
 
 	// DeBUG
 	env_->publish_expanded_states();
+    publish_expansions();
 	return true;
 }
+
+void GKI3dNavPlanner::publish_expansions()
+{
+    ARAPlanner* pl = dynamic_cast<ARAPlanner*>(planner_);
+    if(!pl)
+        return;
+
+    const std::vector< std::vector<int> > & gen_states = pl->get_generated_states();
+    const std::vector< std::vector<int> > & exp_states = pl->get_expanded_states();
+
+    visualization_msgs::MarkerArray ma;
+    visualization_msgs::Marker mark;
+    mark.type = visualization_msgs::Marker::ARROW;
+    mark.scale.x = 0.1;
+    mark.scale.y = 0.01;
+    mark.scale.z = 0.01;
+    mark.color.a = 0.1;
+    mark.header.frame_id = env_->getPlanningScene()->getPlanningFrame();
+    color_tools::HSV hsv;
+    hsv.s = 1.0;
+    hsv.v = 1.0;
+    for(int iteration = 0; iteration < exp_states.size(); iteration++) {
+        std::stringstream ss;
+        ss << "expansions_" << std::setfill('0') << std::setw(2) << iteration;
+        mark.ns = ss.str();
+        hsv.h = 300.0 * (1.0 - 1.0*iteration/exp_states.size());
+        color_tools::convert(hsv, mark.color);
+        int state = 0;
+        mark.action = visualization_msgs::Marker::ADD;
+        for(; state < exp_states[iteration].size(); state++) {
+            mark.id = state;
+            mark.pose = env_->poseFromStateID(exp_states[iteration][state]);
+            mark.pose.position.z += 0.3 * (1.0 - 1.0*iteration/exp_states.size());
+            ma.markers.push_back(mark);
+        }
+        mark.action = visualization_msgs::Marker::DELETE;
+        for(; state < 1000; state++) {
+            mark.id = state;
+            ma.markers.push_back(mark);
+        }
+    }
+    for(int iteration = 0; iteration < gen_states.size(); iteration++) {
+        std::stringstream ss;
+        ss << "generated_" << std::setfill('0') << std::setw(2) << iteration;
+        mark.ns = ss.str();
+        hsv.h = 300.0 * (1.0 - 1.0*iteration/gen_states.size());
+        color_tools::convert(hsv, mark.color);
+        int state = 0;
+        mark.action = visualization_msgs::Marker::ADD;
+        for(; state < gen_states[iteration].size(); state++) {
+            mark.id = state;
+            mark.pose = env_->poseFromStateID(gen_states[iteration][state]);
+            mark.pose.position.z += 0.3 * (1.0 - 1.0*iteration/gen_states.size());
+            ma.markers.push_back(mark);
+        }
+        mark.action = visualization_msgs::Marker::DELETE;
+        for(; state < 1000; state++) {
+            mark.id = state;
+            ma.markers.push_back(mark);
+        }
+    }
+
+    expansions_publisher_.publish(ma);
 }
-;
+
+}
+
