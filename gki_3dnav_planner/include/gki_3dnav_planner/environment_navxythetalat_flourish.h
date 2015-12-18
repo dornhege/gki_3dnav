@@ -102,12 +102,14 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 
   ros::Publisher pose_array_publisher;
   ros::Publisher nontravpose_array_publisher;
-
+  ros::Publisher action_array_publisher;
 
   sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
+  void discreteToContinuous(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c);
   void discreteXYToContinuous(int x_d, int y_d, double& x_c, double& y_c);
   void continuousToDiscrete(sbpl_xy_theta_pt_t pose, int& x, int& y, int& theta);
   void continuousToDiscrete(double x_c, double y_c, double theta_c, int& x, int& y, int& theta);
+  void continuousXYToDiscrete(double x_c, double y_c, int& x, int& y);
   Eigen::Vector2i continuousXYToDiscrete(Eigen::Vector2f xy_c);
 
   bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);

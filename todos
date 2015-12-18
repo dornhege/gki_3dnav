@@ -7,3 +7,6 @@ envcfg sinnvoll fuellen, Grid2d mit max(possiblewheelcells height)-height
 initialize stuff angucken (initEnv, initGeneral,...) + sinnvoll ersetzen
 write new ReadConfiguration, EnsureHeuristicsUpdated, SetMap,  
 show all motion primitives with color code for traversability
+fix theta in actions
+
+Array marker fuer motion primitives

@@ -24,49 +24,51 @@ void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization
   ROS_INFO_STREAM( feedback->marker_name << " is now at "
 		   << feedback->pose.position.x << ", " << feedback->pose.position.y
 		   << ", " << feedback->pose.position.z );
+  planningFrameID = "odom"; //TODO
 
+  geometry_msgs::PoseArray travmsg;
+  geometry_msgs::PoseArray nontravmsg;
+  geometry_msgs::PoseArray* msg;
+  travmsg.header.frame_id = planningFrameID;
+  nontravmsg.header.frame_id = planningFrameID;
+
+  geometry_msgs::Pose pose = feedback->pose;
+  float theta_c = Ais3dTools::TransformationRepresentation::getYawFromQuaternion<float>(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
   int aind;
+  int source_x, source_y, theta_d;
+  continuousToDiscrete(pose.position.x, pose.position.y, theta_c, source_x, source_y, theta_d);
 
-  //clear the successor array
-  //SuccIDV->clear();
-  //CostV->clear();
-  //SuccIDV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
-  //CostV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
-  //if (actionV != NULL) {
-  //  actionV->clear();
-  //  actionV->reserve(EnvNAVXYTHETALATCfg.actionwidth);
-  //}
-  //
-  ////get X, Y for the state
-  //EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[SourceStateID];
-  int x, y;
+  std::cout << "actionwidth: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
   
-
-  //iterate through actions
-  /*for (aind = 0; aind < EnvNAVXYTHETALATCfg.actionwidth; aind++) {
-    EnvNAVXYTHETALATAction_t* nav3daction = &EnvNAVXYTHETALATCfg.ActionsV[(unsigned int)HashEntry->Theta][aind];
-    int newX = HashEntry->X + nav3daction->dX;
-    int newY = HashEntry->Y + nav3daction->dY;
-    int newTheta = NORMALIZEDISCTHETA(nav3daction->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
-
-    //skip the invalid cells
-    if (!IsValidCell(newX, newY)) continue;
-
-    //get cost
-    int cost = GetActionCost(HashEntry->X, HashEntry->Y, HashEntry->Theta, nav3daction);
-    if (cost >= INFINITECOST) continue;
-
-    EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-    if ((OutHashEntry = (this->*GetHashEntry)(newX, newY, newTheta)) == NULL) {
-      //have to create a new entry
-      OutHashEntry = (this->*CreateNewHashEntry)(newX, newY, newTheta);
+  for (aind = 0; aind < EnvNAVXYTHETALATCfg.actionwidth; aind++) {
+    EnvNAVXYTHETALATAction_t* nav3daction = &EnvNAVXYTHETALATCfg.ActionsV[theta_d][aind];
+    EnvNAVXYTHETALAT3Dcell_t interm3Dcell;
+    std::cout << "processing action " << aind << " for theta " << theta_d << " endtheta = " << nav3daction->endtheta;
+    if(GetActionCost(source_x, source_y, theta_d, nav3daction) < INFINITECOST){
+      msg = &travmsg;
+    }else{
+      msg = &nontravmsg;
     }
 
-    SuccIDV->push_back(OutHashEntry->stateID);
-    CostV->push_back(cost);
-    if (actionV != NULL) actionV->push_back(nav3daction);
-    }*/
+    for(int i = 0; i < (int)nav3daction->interm3DcellsV.size(); i++){
+      interm3Dcell = nav3daction->interm3DcellsV.at(i);
+      interm3Dcell.x = interm3Dcell.x + source_x;
+      interm3Dcell.y = interm3Dcell.y + source_y;
+      std::cout << ", cell " << interm3Dcell.x << ", " << interm3Dcell.y << ", " << interm3Dcell.theta;
 
+      msg->poses.push_back(geometry_msgs::Pose());
+      geometry_msgs::Pose& intermpose = msg->poses.back();
+      double x, y, theta;
+      discreteToContinuous(interm3Dcell.x, interm3Dcell.y, interm3Dcell.theta, x, y, theta);
+      intermpose.position.x = x;
+      intermpose.position.y = y;
+      intermpose.position.z = 0.1;
+      intermpose.orientation = tf::createQuaternionMsgFromYaw(theta);
+    }
+    std::cout << std::endl;
+  }
+  action_array_publisher.publish(travmsg);
+  nontravpose_array_publisher.publish(nontravmsg);
 }
 
 Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
@@ -383,6 +385,7 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   traversable_map_publisher = nhPriv.advertise<visualization_msgs::Marker>("travmap", 1, true); 
   pose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
   nontravpose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
+  action_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
 
   // create an interactive marker server on the topic namespace simple_marker
   interserver = new interactive_markers::InteractiveMarkerServer("simple_marker");
@@ -397,9 +400,9 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   // create a grey box marker
   visualization_msgs::Marker box_marker;
   box_marker.type = visualization_msgs::Marker::CUBE;
-  box_marker.scale.x = 0.45;
-  box_marker.scale.y = 0.45;
-  box_marker.scale.z = 0.45;
+  box_marker.scale.x = 0.2;
+  box_marker.scale.y = 0.2;
+  box_marker.scale.z = 0.2;
   box_marker.color.r = 0.5;
   box_marker.color.g = 0.5;
   box_marker.color.b = 0.5;
@@ -629,6 +632,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     interm3Dcell = action->interm3DcellsV.at(i);
     interm3Dcell.x = interm3Dcell.x + SourceX;
     interm3Dcell.y = interm3Dcell.y + SourceY;
+    //std::cout << " th = " << interm3Dcell.theta;
     float intermCost = GetCellCost(interm3Dcell.x, interm3Dcell.y, interm3Dcell.theta);
     // check if cell between start and end position os inside the map
     if(intermCost == INFINITECOST){
@@ -985,6 +989,15 @@ sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatFlourish::discreteToContinuous(int x,
   return pose;
 }
 
+void EnvironmentNavXYThetaLatFlourish::discreteToContinuous(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c)
+{
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  x_c = DISCXY2CONT(x_d, tMap.getResolution())+offset.x();
+  y_c = DISCXY2CONT(y_d, tMap.getResolution())+offset.y();
+  theta_c = DiscTheta2Cont(theta_d, EnvNAVXYTHETALATCfg.NumThetaDirs);
+}
+
 void EnvironmentNavXYThetaLatFlourish::discreteXYToContinuous(int x_d, int y_d, double& x_c, double& y_c)
 {
   Eigen::Vector2f offset;
@@ -1002,13 +1015,21 @@ void EnvironmentNavXYThetaLatFlourish::continuousToDiscrete(sbpl_xy_theta_pt_t p
   theta = ContTheta2Disc(pose.theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 }
 
-void EnvironmentNavXYThetaLatFlourish::continuousToDiscrete(double x_c, double y_c, double theta_c, int& x, int& y, int& theta)
+void EnvironmentNavXYThetaLatFlourish::continuousToDiscrete(double x_c, double y_c, double theta_c, int& x_d, int& y_d, int& theta)
 {
   Eigen::Vector2f offset;
   tMap.getOffset(offset);
-  x = CONTXY2DISC(x_c - offset.x(), tMap.getResolution());
-  y = CONTXY2DISC(y_c - offset.y(), tMap.getResolution());
+  x_d = CONTXY2DISC(x_c - offset.x(), tMap.getResolution());
+  y_d = CONTXY2DISC(y_c - offset.y(), tMap.getResolution());
   theta = ContTheta2Disc(theta_c, EnvNAVXYTHETALATCfg.NumThetaDirs);
+}
+
+void EnvironmentNavXYThetaLatFlourish::continuousXYToDiscrete(double x_c, double y_c, int& x_d, int& y_d)
+{
+  Eigen::Vector2f offset;
+  tMap.getOffset(offset);
+  x_d = CONTXY2DISC(x_c - offset.x(), tMap.getResolution());
+  y_d = CONTXY2DISC(y_c - offset.y(), tMap.getResolution());
 }
 
 Eigen::Vector2i EnvironmentNavXYThetaLatFlourish::continuousXYToDiscrete(Eigen::Vector2f xy_c)
