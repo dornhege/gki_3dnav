@@ -54,13 +54,45 @@ def make_scatter_plot(ax, data, fn):
         ax.set_ylim(fn.min, fn.max)
     except AttributeError:
         pass
-    ax.plot([e[0] for e in sp], [e[1] for e in sp], 'o')
+    ax.plot([e[0] for e in sp], [e[1] for e in sp], 'o', alpha=0.5)
     ax.plot([0,100*1000], [0, 100*1000], '-', color='k', linewidth=2)
     labels = sorted(data.keys())
     ax.set_xlabel(labels[0])
     ax.set_ylabel(labels[1])
     ax.set_title(fn.__name__)
 
+def make_time_histogram(ax, data, fn):
+    try:
+        ax.set_xlim(fn.min, fn.max)
+        ax.set_ylim(0.0, 1.05)
+    except AttributeError:
+        pass
+    data_time_points = {}
+    for k, v in data.iteritems():
+        for run in v:
+            time_point = fn(run)
+            if not k in data_time_points:
+                data_time_points[k] = [time_point]
+            else:
+                data_time_points[k].append(time_point)
+    for k, v in data_time_points.iteritems():
+        v.sort()
+    def make_hist(times):
+        sum_acc = 0.0
+        hist = {}
+        hist[0.0] = 0.0
+        for t in times:
+            sum_acc += 1.0
+            hist[t] = sum_acc
+        hist = dict((k, v/sum_acc) for k,v in hist.iteritems())
+        return hist
+    for k in sorted(data_time_points.keys()):
+        h = make_hist(data_time_points[k])
+        points = [(k, v) for k,v in sorted(h.iteritems())]
+        ax.plot([e[0] for e in points], [e[1] for e in points], '-')
+    ax.plot([0, 10], [0.95, 0.95], '-', color='k')
+    ax.legend(sorted(data_time_points.keys()), 'lower right')
+    ax.set_title(fn.__name__)
 
 def main():
     pq_name = sys.argv[1]
@@ -73,21 +105,11 @@ def main():
     make_scatter_plot(axx[0, 0], data, time_to_first)
     make_scatter_plot(axx[0, 1], data, final_eps_reached)
     make_scatter_plot(axx[1, 0], data, final_cost)
+    make_time_histogram(axx[1, 1], data, time_to_first)
     make_scatter_plot(axx[2, 0], data, expands_to_first)
     make_scatter_plot(axx[2, 1], data, expands)
 
-    ##sp = scatter_pairs(data, time_to_first)
-    #sp = scatter_pairs(data, final_cost)
-    #print sp
-    ##plt.xlim(0, 10.5)
-    ##plt.ylim(0, 10.5)
-    #plt.plot([e[0] for e in sp], [e[1] for e in sp], 'o')
-    #plt.plot([0,100*1000], [0, 100*1000], '-', color='k', linewidth=2)
-    #labels = sorted(data.keys())
-    #plt.xlabel(labels[0])
-    #plt.ylabel(labels[1])
     plt.show()
-    #print data
 
 if __name__=="__main__":
     main()
