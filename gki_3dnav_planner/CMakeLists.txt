@@ -13,8 +13,9 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   std_msgs
   std_srvs
-  #sbpl
+  nav_msgs
   visualization_msgs
+  color_tools
   interactive_markers
   roscpp
   ais3dTools
@@ -64,18 +65,17 @@ include_directories(${catkin_INCLUDE_DIRS})
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  PlannerStat.msg
+  PlannerStats.msg
+)
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+  FILES
+  SampleValidPoses.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -85,10 +85,10 @@ include_directories(${catkin_INCLUDE_DIRS})
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   moveit_msgs#   nav_msgs#   std_msgs#   visualization_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  moveit_msgs geometry_msgs
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -131,12 +131,25 @@ add_library(flourish_planner
     src/flourish_planner.cpp
 )
 
+add_executable(sample_valid_poses
+    src/sample_valid_poses.cpp)
+target_link_libraries(sample_valid_poses
+    ${catkin_LIBRARIES})
+add_dependencies(sample_valid_poses gki_3dnav_planner_generate_messages_cpp)
+
+add_executable(evaluate_pose_queries
+    src/evaluate_pose_queries.cpp)
+target_link_libraries(evaluate_pose_queries
+    ${catkin_LIBRARIES}
+    yaml-cpp)
+add_dependencies(evaluate_pose_queries gki_3dnav_planner_generate_messages_cpp)
+
 ## Declare a cpp executable
 add_executable(visual_path_planning_node src/VisualPathPlannerNode.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-# add_dependencies(gki_3dnav_planner_node gki_3dnav_planner_generate_messages_cpp)
+add_dependencies(gki_3dnav_planner gki_3dnav_planner_generate_messages_cpp)
 #add_dependencies(visual_path_planning_node full_body_nav_msgs_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against

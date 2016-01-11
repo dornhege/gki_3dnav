@@ -3,7 +3,10 @@
 #include <sbpl/utils/mdp.h>
 #include <sbpl/utils/key.h>
 #include <sbpl/planners/planner.h>
+#include <sbpl/utils/2Dgridsearch.h>
 #include <moveit/move_group/capability_names.h>
+#include <moveit/robot_state/conversions.h>
+#include <tf/transform_datatypes.h>
 
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
@@ -184,7 +187,29 @@ void EnvironmentNavXYThetaLatMoveit::publish_expanded_states()
     pose_array_publisher.publish(msg);
 }
 
-sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatMoveit::discreteToContinuous(int x, int y, int theta)
+// TODO others + cleanup iface + internally only use these
+bool EnvironmentNavXYThetaLatMoveit::gridToWorld(int X, int Y, int Theta, double & x, double & y, double & theta) const
+{
+    sbpl_xy_theta_pt_t pt = discreteToContinuous(X, Y, Theta);
+    x = pt.x + costmapOffsetX;
+    y = pt.y + costmapOffsetY;
+    theta = pt.theta;
+
+    return true;    // TODO check in map
+}
+
+geometry_msgs::Pose EnvironmentNavXYThetaLatMoveit::poseFromStateID(int stateID) const
+{
+    EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[stateID];
+    geometry_msgs::Pose pose;
+    pose.position.z = 0;
+    double theta;
+    gridToWorld(state->X, state->Y, state->Theta, pose.position.x, pose.position.y, theta);
+    pose.orientation = tf::createQuaternionMsgFromYaw(theta);
+    return pose;
+}
+
+sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatMoveit::discreteToContinuous(int x, int y, int theta) const
 {
     sbpl_xy_theta_pt_t pose;
     pose.x = DISCXY2CONT(x, EnvNAVXYTHETALATCfg.cellsize_m);
@@ -218,5 +243,140 @@ const EnvironmentNavXYThetaLatMoveit::FullBodyCollisionInfo& EnvironmentNavXYThe
         //        pose.theta, full_body_collision_infos[state->stateID].collision);
     }
     return full_body_collision_infos[state->stateID];
+}
+
+int EnvironmentNavXYThetaLatMoveit::GetFromToHeuristic(int FromStateID, int ToStateID)
+{
+    int heur = EnvironmentNAVXYTHETALAT::GetFromToHeuristic(FromStateID, ToStateID);
+
+    EnvNAVXYTHETALATHashEntry_t* FromHashEntry = StateID2CoordTable[FromStateID];
+    EnvNAVXYTHETALATHashEntry_t* ToHashEntry = StateID2CoordTable[ToStateID];
+
+    int dx = ToHashEntry->X - FromHashEntry->X;
+    int dy = ToHashEntry->Y - FromHashEntry->Y;
+
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
+        hfs = freespace_heuristic_costmap->getCost(dx, dy, FromHashEntry->Theta, ToHashEntry->Theta);
+
+    count++;
+    if(count % 1000 == 0) {
+        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
+                hfs, heur,
+                count, past, count - past, (double)(count-past)/count*100.0);
+    }
+    if(hfs > heur)
+        return hfs;
+    past++;
+    return heur;
+}
+
+int EnvironmentNavXYThetaLatMoveit::GetStartHeuristic(int stateID)
+{
+    int heur = EnvironmentNAVXYTHETALAT::GetStartHeuristic(stateID);
+
+    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
+    int dx = EnvNAVXYTHETALATCfg.StartX_c - HashEntry->X;
+    int dy = EnvNAVXYTHETALATCfg.StartY_c - HashEntry->Y;
+    dx = -dx;   // FIXME this is supposed to be FROM start TO stateID, not vice versa
+    dy = -dy;
+    int endTh = HashEntry->Theta;
+
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
+        hfs = freespace_heuristic_costmap->getCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
+
+    count++;
+    if(count % 1000 == 0) {
+        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
+                hfs, heur,
+                count, past, count - past, (double)(count-past)/count*100.0);
+    }
+    if(hfs > heur)
+        return hfs;
+    past++;
+    return heur;
+}
+
+int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
+{
+#if USE_HEUR==0
+    return 0;
+#endif
+
+#if DEBUG
+    if (stateID >= (int)StateID2CoordTable.size()) {
+        SBPL_ERROR("ERROR in EnvNAVXYTHETALAT... function: stateID illegal\n");
+        throw new SBPL_Exception();
+    }
+#endif
+
+    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
+    //computes distances from start state that is grid2D, so it is EndX_c EndY_c
+    int h2D = grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(HashEntry->X, HashEntry->Y); 
+    int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM * EuclideanDistance_m(HashEntry->X, HashEntry->Y,
+                EnvNAVXYTHETALATCfg.EndX_c,
+                EnvNAVXYTHETALATCfg.EndY_c));
+    //define this function if it is used in the planner (heuristic backward search would use it)
+    int heur = (int)(((double)__max(h2D, hEuclid)) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs);
+
+    int dx = EnvNAVXYTHETALATCfg.EndX_c - HashEntry->X;
+    int dy = EnvNAVXYTHETALATCfg.EndY_c - HashEntry->Y;
+    int startTh = HashEntry->Theta;
+
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
+        hfs = freespace_heuristic_costmap->getCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
+
+    count++;
+    if(count % 1000 == 0) {
+        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
+                hfs, heur,
+                count, past, count - past, (double)(count-past)/count*100.0);
+    }
+    if(hfs > heur)
+        return hfs;
+    past++;
+    return heur;
+}
+
+moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatMoveit::pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const
+{
+    moveit_msgs::DisplayTrajectory dtraj;
+    dtraj.model_id = "robot";    // FIXME this is just for matching?
+    if(path.empty())
+        return dtraj;
+
+    // Do NOT update the scene. This should be the path that we planned with before.
+    moveit::core::robotStateToRobotStateMsg(scene->getCurrentState(), dtraj.trajectory_start);
+    moveit_msgs::RobotTrajectory traj;
+    traj.multi_dof_joint_trajectory.header = path.front().header;   // all poses in path should be in the same frame
+    traj.multi_dof_joint_trajectory.joint_names.push_back("world_joint");
+    tf::Transform lastPose;
+    for(unsigned int i = 0; i < path.size(); ++i) {
+        trajectory_msgs::MultiDOFJointTrajectoryPoint pt;
+        geometry_msgs::Transform tf;
+        tf.translation.x = path[i].pose.position.x;
+        tf.translation.y = path[i].pose.position.y;
+        tf.translation.z = path[i].pose.position.z;
+        tf.rotation = path[i].pose.orientation;
+
+        if(i > 0) {
+            tf::Transform curPose;
+            tf::transformMsgToTF(tf, curPose);
+            tf::Transform delta = lastPose.inverseTimes(curPose);
+            if(hypot(delta.getOrigin().x(), delta.getOrigin().y()) < 0.05 &&
+                    tf::getYaw(delta.getRotation()) < 0.2)
+                continue;
+        }
+
+        pt.transforms.push_back(tf);
+        tf::transformMsgToTF(tf, lastPose);
+
+        traj.multi_dof_joint_trajectory.points.push_back(pt);
+    }
+
+    dtraj.trajectory.push_back(traj);
+    return dtraj;
 }
 
