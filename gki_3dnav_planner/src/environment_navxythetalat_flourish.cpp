@@ -708,9 +708,14 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   int endTheta = NORMALIZEDISCTHETA(endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-  if((OutHashEntry = (this->*GetHashEntry)(SourceX, SourceY, SourceTheta)) == NULL){
+  /*if((OutHashEntry = (this->*GetHashEntry)(SourceX, SourceY, SourceTheta)) == NULL){
     //have to create a new entry
     OutHashEntry = (this->*CreateNewHashEntry)(SourceX, SourceY, SourceTheta);
+    }*/
+
+  if((OutHashEntry = (this->*GetHashEntry)(endX, endY, endTheta)) == NULL){
+    //have to create a new entry
+    OutHashEntry = (this->*CreateNewHashEntry)(endX, endY, endTheta);
   }
 
   get_full_body_traversability_cost_info(OutHashEntry);
