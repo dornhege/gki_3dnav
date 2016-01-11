@@ -102,7 +102,9 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 
   ros::Publisher pose_array_publisher;
   ros::Publisher nontravpose_array_publisher;
+  ros::Publisher nontravaction_array_publisher;
   ros::Publisher action_array_publisher;
+  ros::Publisher endtheta_array_publisher;
 
   sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
   void discreteToContinuous(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c);

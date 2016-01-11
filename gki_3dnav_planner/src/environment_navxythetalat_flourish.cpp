@@ -29,8 +29,11 @@ void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization
   geometry_msgs::PoseArray travmsg;
   geometry_msgs::PoseArray nontravmsg;
   geometry_msgs::PoseArray* msg;
+  geometry_msgs::PoseArray endthetamsg;
+
   travmsg.header.frame_id = planningFrameID;
   nontravmsg.header.frame_id = planningFrameID;
+  endthetamsg.header.frame_id = planningFrameID;
 
   geometry_msgs::Pose pose = feedback->pose;
   float theta_c = Ais3dTools::TransformationRepresentation::getYawFromQuaternion<float>(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
@@ -41,34 +44,53 @@ void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization
   std::cout << "actionwidth: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
   
   for (aind = 0; aind < EnvNAVXYTHETALATCfg.actionwidth; aind++) {
-    EnvNAVXYTHETALATAction_t* nav3daction = &EnvNAVXYTHETALATCfg.ActionsV[theta_d][aind];
-    EnvNAVXYTHETALAT3Dcell_t interm3Dcell;
-    std::cout << "processing action " << aind << " for theta " << theta_d << " endtheta = " << nav3daction->endtheta;
-    if(GetActionCost(source_x, source_y, theta_d, nav3daction) < INFINITECOST){
+    //visualization_msgs::Marker marker;
+    geometry_msgs::Pose marker;
+    geometry_msgs::Pose endthetapose;
+    
+    EnvNAVXYTHETALATAction_t* action = &EnvNAVXYTHETALATCfg.ActionsV[theta_d][aind];
+    std::cout << "thetas: ";
+    for(size_t i = 0; i < action->interm3DcellsV.size(); ++i){
+      std::cout << action->interm3DcellsV.at(i).theta << " ";
+    }
+    if(action->interm3DcellsV.size() == 0){
+      std::cout << "No following cells, skipping" << std::endl;
+      continue;
+    }
+    int dX_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).x;
+    int dY_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).y;
+    int endtheta_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).theta;
+    double endtheta_c = DiscTheta2Cont(endtheta_d, EnvNAVXYTHETALATCfg.NumThetaDirs);
+
+    std::cout << "processing action " << aind << " for theta " << theta_d << ", dX = " << dX_d<< ", dY = " << dY_d << std::endl; //" endtheta = " << action->endtheta;
+    if(GetActionCost(source_x, source_y, theta_d, action) < INFINITECOST){
       msg = &travmsg;
     }else{
       msg = &nontravmsg;
     }
+    double dX_c, dY_c;
+    dX_c = dX_d*tMap.getResolution();
+    dY_c = dY_d*tMap.getResolution();
+    double yaw = atan2(dY_c, dX_c);
 
-    for(int i = 0; i < (int)nav3daction->interm3DcellsV.size(); i++){
-      interm3Dcell = nav3daction->interm3DcellsV.at(i);
-      interm3Dcell.x = interm3Dcell.x + source_x;
-      interm3Dcell.y = interm3Dcell.y + source_y;
-      std::cout << ", cell " << interm3Dcell.x << ", " << interm3Dcell.y << ", " << interm3Dcell.theta;
+    marker.position.x = pose.position.x;
+    marker.position.y = pose.position.y;
+    marker.position.z = 0.1;
+    Ais3dTools::TransformationRepresentation::getQuaternionFromEuler(0., 0., yaw, marker.orientation.w, marker.orientation.x, marker.orientation.y, marker.orientation.z);
 
-      msg->poses.push_back(geometry_msgs::Pose());
-      geometry_msgs::Pose& intermpose = msg->poses.back();
-      double x, y, theta;
-      discreteToContinuous(interm3Dcell.x, interm3Dcell.y, interm3Dcell.theta, x, y, theta);
-      intermpose.position.x = x;
-      intermpose.position.y = y;
-      intermpose.position.z = 0.1;
-      intermpose.orientation = tf::createQuaternionMsgFromYaw(theta);
-    }
-    std::cout << std::endl;
+    endthetapose.position.x = pose.position.x + dX_c;
+    endthetapose.position.y = pose.position.y + dY_c;
+    endthetapose.position.z = 0.1;
+    Ais3dTools::TransformationRepresentation::getQuaternionFromEuler(0., 0., endtheta_c, endthetapose.orientation.w, endthetapose.orientation.x, endthetapose.orientation.y, endthetapose.orientation.z);
+  
+    msg->poses.push_back(marker);
+    endthetamsg.poses.push_back(endthetapose);
+    std::cout << "pushing back marker with yaw " << yaw << std::endl;
+
   }
   action_array_publisher.publish(travmsg);
-  nontravpose_array_publisher.publish(nontravmsg);
+  nontravaction_array_publisher.publish(nontravmsg);
+  endtheta_array_publisher.publish(endthetamsg);
 }
 
 Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
@@ -384,8 +406,12 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
   traversable_map_publisher = nhPriv.advertise<visualization_msgs::Marker>("travmap", 1, true); 
   pose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
+  //nontravpose_array_publisher = nhPriv.advertise<visualization_msgs::MarkerArray>("nontrav_states", 1, true);
+  //action_array_publisher = nhPriv.advertise<visualization_msgs::MarkerArray>("possible_actions", 1, true);
   nontravpose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
+  nontravaction_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("nontrav_actions", 1, true);
   action_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
+  endtheta_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
 
   // create an interactive marker server on the topic namespace simple_marker
   interserver = new interactive_markers::InteractiveMarkerServer("simple_marker");
@@ -619,7 +645,13 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   int i;
   
   float startcellcost = GetCellCost(SourceX, SourceY, SourceTheta);
-  float endcellcost = GetCellCost(SourceX+action->dX, SourceY+action->dY, action->endtheta);
+
+  //Hack since dX, dY and endtheta are not properly filled in the actions
+  int dX_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).x;
+  int dY_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).y;
+  int endtheta = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).theta;
+  //float endcellcost = GetCellCost(SourceX+dX_d, SourceY+dY_d, action->endtheta);
+  float endcellcost = GetCellCost(SourceX+dX_d, SourceY+dY_d, endtheta);
   
   if(startcellcost == INFINITECOST || endcellcost == INFINITECOST){
     return INFINITECOST;
@@ -638,7 +670,6 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     if(intermCost == INFINITECOST){
       return INFINITECOST;
     }
-    
     maxcellcost = std::max(maxcellcost, intermCost);
   }
   
@@ -672,9 +703,9 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     return cost;
 
   // full body check to maybe disregard state
-  int endX = SourceX + action->dX;
-  int endY = SourceY + action->dY;
-  int endTheta = NORMALIZEDISCTHETA(action->endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  int endX = SourceX + dX_d;
+  int endY = SourceY + dY_d;
+  int endTheta = NORMALIZEDISCTHETA(endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
   if((OutHashEntry = (this->*GetHashEntry)(SourceX, SourceY, SourceTheta)) == NULL){
