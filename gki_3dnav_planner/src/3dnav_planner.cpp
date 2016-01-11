@@ -123,7 +123,7 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 		private_nh_->param("forward_search", forward_search_, bool(false));
 		private_nh_->param("primitive_filename", primitive_filename_, string(""));
 		private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
-        private_nh_->param("use_freespace_heuristic", use_freespace_heuristic_, true);
+        private_nh_->param("use_freespace_heuristic", use_freespace_heuristic_, false);
 
 		double nominalvel_mpersecs, timetoturn45degsinplace_secs;
 		private_nh_->param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);

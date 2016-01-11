@@ -11,6 +11,8 @@
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <sbpl/utils/key.h>
 
+#include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
+
 #include <interactive_markers/interactive_marker_server.h>
 
 // TODO
@@ -33,8 +35,8 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   bool IsWithinMapCell(int X, int Y);
   bool IsValidConfiguration(int X, int Y, int Theta);
   void EnsureHeuristicsUpdated(bool bGoalHeuristics);
-  int GetGoalHeuristic(int stateID);
-  int GetStartHeuristic(int stateID);
+  //int GetGoalHeuristic(int stateID);
+  //int GetStartHeuristic(int stateID);
   bool UpdateCost(int x, int y, unsigned char newcost);
   bool IsObstacle(int x, int y);
   unsigned char GetMapCost(int x, int y);
@@ -67,6 +69,15 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   void computeWheelPositions();
   moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
 
+  bool useFreespaceHeuristic(bool on) { useFreespaceHeuristic_ = on; }
+
+  virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
+  virtual int GetStartHeuristic(int stateID);
+  virtual int GetGoalHeuristic(int stateID);
+
+  int count;
+  int past;
+
  protected:
   int GetCellCost(int X, int Y, int Theta);
   virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
@@ -90,7 +101,8 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
     }
   };
   std::vector<FullBodyTraversabilityCost> full_body_traversability_cost_infos;
-
+  freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
+  bool useFreespaceHeuristic_;
 
   planning_scene::PlanningScenePtr scene;
   planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
