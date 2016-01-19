@@ -39,6 +39,13 @@
 #include <pluginlib/class_list_macros.h>
 #include <nav_msgs/Path.h>
 //#include <sbpl_lattice_planner/SBPLLatticePlannerStats.h>
+#include <gki_3dnav_planner/PlannerStats.h>
+#include <sbpl/planners/planner.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <sstream>
+#include <iomanip>
+
+#include "color_tools/color_tools.h"
 
 #include <costmap_2d/inflation_layer.h>
 #include <eigen_conversions/eigen_msg.h>
@@ -104,25 +111,28 @@ namespace flourish_planner{
   void FlourishPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros)
   {
     if (!initialized_){
-      ros::NodeHandle private_nh("~/" + name);
+      private_nh_ = new ros::NodeHandle("~/" + name);
       ros::NodeHandle nh(name);
 
       ROS_INFO("Name is %s", name.c_str());
 
-      private_nh.param("planner_type", planner_type_, string("ARAPlanner"));
-      private_nh.param("allocated_time", allocated_time_, 10.0);
-      private_nh.param("initial_epsilon", initial_epsilon_, 3.0);
-      private_nh.param("environment_type", environment_type_, string("XYThetaLattice"));
-      private_nh.param("forward_search", forward_search_, bool(false));
-      private_nh.param("primitive_filename", primitive_filename_, string(""));
-      private_nh.param("force_scratch_limit", force_scratch_limit_, 500);
+      private_nh_->param("planner_type", planner_type_, string("ARAPlanner"));
+      private_nh_->param("allocated_time", allocated_time_, 10.0);
+      private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
+      private_nh_->param("environment_type", environment_type_, string("XYThetaLattice"));
+      private_nh_->param("forward_search", forward_search_, bool(false));
+      private_nh_->param("primitive_filename", primitive_filename_, string(""));
+      private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
+      private_nh_->param("use_freespace_heuristic", use_freespace_heuristic_, false);
 
       double nominalvel_mpersecs, timetoturn45degsinplace_secs;
-      private_nh.param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
-      private_nh.param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
+      private_nh_->param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
+      private_nh_->param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
+      bool track_expansions;
+      private_nh_->param("track_expansions", track_expansions, false);
 
       int lethal_obstacle;
-      private_nh.param("lethal_obstacle", lethal_obstacle, 20);
+      private_nh_->param("lethal_obstacle", lethal_obstacle, 20);
       lethal_obstacle_ = (unsigned char) lethal_obstacle;
       inscribed_inflated_obstacle_ = lethal_obstacle_ - 1;
       sbpl_cost_multiplier_ = (unsigned char) (costmap_2d::INSCRIBED_INFLATED_OBSTACLE / inscribed_inflated_obstacle_ + 1);
@@ -158,7 +168,7 @@ namespace flourish_planner{
       }
       tMap.computeDistanceMap();
 
-      env_ = new EnvironmentNavXYThetaLatFlourish(private_nh, tMap);
+      env_ = new EnvironmentNavXYThetaLatFlourish(private_nh_, tMap);
 
       // check if the costmap has an inflation layer
       // Warning: footprint updates after initialization are not supported here
@@ -232,6 +242,7 @@ namespace flourish_planner{
       if ("ARAPlanner" == planner_type_){
 	ROS_INFO("Planning with ARA*");
 	planner_ = new ARAPlanner(env_, forward_search_);
+	dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
       }else if ("ADPlanner" == planner_type_){
 	ROS_INFO("Planning with AD*");
 	planner_ = new ADPlanner(env_, forward_search_);
@@ -241,9 +252,17 @@ namespace flourish_planner{
       }
 
       ROS_INFO("[gki_3dnav_planner] Initialized successfully");
-      plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
-      //stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
-      traj_pub_ = private_nh.advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
+      plan_pub_ = private_nh_->advertise<nav_msgs::Path>("plan", 1);
+      //stats_publisher_ = private_nh_->advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
+      traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
+      expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
+
+      // TODO: do we need this?
+      /*srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
+							&FlourishPlanner::sampleValidPoses, this);
+
+							srand48(time(NULL));*/
+
 
       initialized_ = true;
     }
@@ -315,17 +334,29 @@ namespace flourish_planner{
     //env_->publish_planning_scene();
     return makePlan_(start, goal, plan);
     }*/
+  
   bool FlourishPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
   {
     env_->clear_full_body_traversability_cost_infos();
     env_->update_planning_scene();
     //env_->publish_planning_scene();
-    bool madePlan = makePlan_(start, goal, plan);
-    if(madePlan){
+
+    private_nh_->getParam("use_freespace_heuristic", use_freespace_heuristic_);
+    if(use_freespace_heuristic_){
+      std::cout << "using freespace" << std::endl;
+    }
+    env_->useFreespaceHeuristic(use_freespace_heuristic_);
+    env_->count = 0;
+    env_->past = 0;
+    bool planOK = makePlan_(start, goal, plan);
+    if(planOK) {
       moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
       traj_pub_.publish(traj);
+      ROS_INFO("Published traj");
+      //ros::Duration(10.0).sleep();
     }
-    return madePlan;
+
+    return planOK;
   }
 
   bool FlourishPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan)
@@ -352,9 +383,11 @@ namespace flourish_planner{
     double theta_start = 2 * atan2(start.pose.orientation.z, start.pose.orientation.w);
     double theta_goal = 2 * atan2(goal.pose.orientation.z, goal.pose.orientation.w);
 
+    int startId = 0;
     planner_->force_planning_from_scratch();
     try{
       int ret = env_->SetStart(start.pose.position.x, start.pose.position.y, theta_start);
+      startId = ret;
       //std::cout << "planning from start " << start.pose.position.x << ", " << start.pose.position.y << std::endl;
       if (ret < 0 || planner_->set_start(ret) == 0){
 	ROS_ERROR("ERROR: failed to set start state\n");
@@ -376,6 +409,7 @@ namespace flourish_planner{
       return false;
     }
 
+    ROS_INFO("Start state Heur: %d", env_->GetGoalHeuristic(startId));
     int offOnCount = 0;
     int onOffCount = 0;
     int allCount = 0;
@@ -496,7 +530,73 @@ namespace flourish_planner{
 
     // DeBUG
     env_->publish_expanded_states();
+    publish_expansions();
     return true;
   }
+
+  void FlourishPlanner::publish_expansions(){
+    ARAPlanner* pl = dynamic_cast<ARAPlanner*>(planner_);
+    if(!pl){
+      return;
+    }
+
+    const std::vector< std::vector<int> > & gen_states = pl->get_generated_states();
+    const std::vector< std::vector<int> > & exp_states = pl->get_expanded_states();
+
+    visualization_msgs::MarkerArray ma;
+    visualization_msgs::Marker mark;
+    mark.type = visualization_msgs::Marker::ARROW;
+    mark.scale.x = 0.1;
+    mark.scale.y = 0.01;
+    mark.scale.z = 0.01;
+    mark.color.a = 0.1;
+    mark.header.frame_id = env_->getPlanningScene()->getPlanningFrame();
+    color_tools::HSV hsv;
+    hsv.s = 1.0;
+    hsv.v = 1.0;
+    for(int iteration = 0; iteration < exp_states.size(); iteration++) {
+      std::stringstream ss;
+      ss << "expansions_" << std::setfill('0') << std::setw(2) << iteration;
+      mark.ns = ss.str();
+      hsv.h = 300.0 * (1.0 - 1.0*iteration/exp_states.size());
+      color_tools::convert(hsv, mark.color);
+      int state = 0;
+      mark.action = visualization_msgs::Marker::ADD;
+      for(; state < exp_states[iteration].size(); state++) {
+	mark.id = state;
+	mark.pose = env_->poseFromStateID(exp_states[iteration][state]);
+	mark.pose.position.z += 0.3 * (1.0 - 1.0*iteration/exp_states.size());
+	ma.markers.push_back(mark);
+      }
+      mark.action = visualization_msgs::Marker::DELETE;
+      for(; state < 1000; state++) {
+	mark.id = state;
+	ma.markers.push_back(mark);
+      }
+    }
+    for(int iteration = 0; iteration < gen_states.size(); iteration++) {
+      std::stringstream ss;
+      ss << "generated_" << std::setfill('0') << std::setw(2) << iteration;
+      mark.ns = ss.str();
+      hsv.h = 300.0 * (1.0 - 1.0*iteration/gen_states.size());
+      color_tools::convert(hsv, mark.color);
+      int state = 0;
+      mark.action = visualization_msgs::Marker::ADD;
+      for(; state < gen_states[iteration].size(); state++) {
+	mark.id = state;
+	mark.pose = env_->poseFromStateID(gen_states[iteration][state]);
+	mark.pose.position.z += 0.3 * (1.0 - 1.0*iteration/gen_states.size());
+	ma.markers.push_back(mark);
+      }
+      mark.action = visualization_msgs::Marker::DELETE;
+      for(; state < 1000; state++) {
+	mark.id = state;
+	ma.markers.push_back(mark);
+      }
+    }
+
+    expansions_publisher_.publish(ma);
+  }
+
 }
 ;

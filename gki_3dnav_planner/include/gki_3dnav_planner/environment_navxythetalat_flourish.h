@@ -15,80 +15,84 @@
 
 #include <interactive_markers/interactive_marker_server.h>
 
-// TODO
-// Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target
-// check interaction with planning scene from up planner class
-// Integrate these functions directly to work on octomap w/o coll map
-// recheck all uses of the grid everywhere, e.g. heuristics, etc.
-// - should be NULL (set to NULL) and dump everywhere then
-// - maybe grid could be usefull for pessimistic, but should be noted as assumption-wise (e.g., only if robot
-//      has pessimistic assumption and we can go "through" it, radius inscribed then must be
-//      the inner pessimitic radius
-// -> in that case costmap still usable, need to address construction/transformations between
-// costmap, octomap, environment grid (.grid + heuristic) -> Def. what our world model is!
-
 class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 {
  public:
-  void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback );
-  bool IsValidCell(int X, int Y);
-  bool IsWithinMapCell(int X, int Y);
-  bool IsValidConfiguration(int X, int Y, int Theta);
-  void EnsureHeuristicsUpdated(bool bGoalHeuristics);
-  //int GetGoalHeuristic(int stateID);
-  //int GetStartHeuristic(int stateID);
-  bool UpdateCost(int x, int y, unsigned char newcost);
-  bool IsObstacle(int x, int y);
-  unsigned char GetMapCost(int x, int y);
-  void ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath);
-  EnvironmentNavXYThetaLatFlourish(ros::NodeHandle & nhPriv, Ais3dTools::TraversableMap tMap);
+  EnvironmentNavXYThetaLatFlourish(ros::NodeHandle* nhPriv, Ais3dTools::TraversableMap tMap);
   virtual ~EnvironmentNavXYThetaLatFlourish() {}
 
-  virtual int SetGoal(double x_m, double y_m, double theta_rad);
+  // check if the cell given by indices x, y is inside the map and the height is safe for the robot
+  bool IsValidCell(int X, int Y);
+  // check if the cell given by indices x, y is inside the map 
+  bool IsWithinMapCell(int X, int Y);
+  // check if all cells in the footprint given the robot is at pose x, y, theta are valid. Uses isValidCell.
+  bool IsValidConfiguration(int X, int Y, int Theta);
+  // check if the traversable map says cell x, y is traversable or not
+  bool IsObstacle(int x, int y);
+  bool IsObstacle(Eigen::Vector2i index);
+
+  // if x, y, theta is a valid configuration:
+  // sets the start state for the planning task to x_m, y_m, theta_rad
+  // creates a hash entry with the corresponding state id, returns the state id
+  // else: returns -1
   virtual int SetStart(double x_m, double y_m, double theta_rad);
+  // if x, y, theta is a valid configuration:
+  // sets the goal state for the planning task to x_m, y_m, theta_rad
+  // creates a hash entry with the corresponding state id, returns the state id
+  // else: returns -1
+  virtual int SetGoal(double x_m, double y_m, double theta_rad);
+  // sets the parameter on whether we want to use the freespace heuristic
+  bool useFreespaceHeuristic(bool on) { useFreespaceHeuristic_ = on; }
+  // create a new hash entry for the given state
   virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_lookup(int X, int Y, int Theta);
   virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_hash(int X, int Y, int Theta);
 
+  // delete all entries in the full_body_traversability_cost_infos
   virtual void clear_full_body_traversability_cost_infos();
-  virtual void publish_expanded_states();
 
-  void publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells);
-  void publish_traversable_map();
+  // get a geometry_msgs::Pose from a given state id
+  geometry_msgs::Pose poseFromStateID(int stateID) const;
+  
+  // compute and publish the wheel cells relative to the current state 
+  // TODO check
+  void computeWheelPositions();
+
+  moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped>& path) const;
+  void ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath);
+
+  // get euclidean distance from state FromStateID to state ToStateID in m
+  virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
+  // get euclidean distance from start in m
+  virtual int GetStartHeuristic(int stateID);
+  // get euclidean distance to goal in m
+  virtual int GetGoalHeuristic(int stateID);
+
+  // not doing anything right now
+  void EnsureHeuristicsUpdated(bool bGoalHeuristics);
+  //bool UpdateCost(int x, int y, unsigned char newcost);
+  //unsigned char GetMapCost(int x, int y);
 
   /// Update the planning scene directly from the running MoveGroup instance.
   virtual void update_planning_scene();
   /// Update the planning scene to a custom one.
   virtual void update_planning_scene(planning_scene::PlanningSceneConstPtr scene);
-  /// Publish the currently used planning scene instance.
-  virtual void publish_planning_scene();
   /// Use this to access the PlanningScene. Never use internal data structures for that.
   virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
 
+  //int ComputeCosts(int SourceX, int SourceY, int SourceTheta);
 
-  int ComputeCosts(int SourceX, int SourceY, int SourceTheta);
-  void computeWheelPositions();
-  moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
-
-  bool useFreespaceHeuristic(bool on) { useFreespaceHeuristic_ = on; }
-
-  virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
-  virtual int GetStartHeuristic(int stateID);
-  virtual int GetGoalHeuristic(int stateID);
+  // DEBUGGING
+  /// Publish the currently used planning scene instance.
+  virtual void publish_planning_scene();
+  virtual void publish_expanded_states();
+  void publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells);
+  void publish_traversable_map();
+  void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
 
   int count;
   int past;
 
  protected:
-  int GetCellCost(int X, int Y, int Theta);
-  virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
-  virtual void SetConfiguration(int width, int height,
-			const unsigned char* mapdata,
-			int startx, int starty, int starttheta,
-			int goalx, int goaly, int goaltheta,
-			double cellsize_m, double nominalvel_mpersecs,
-			double timetoturn45degsinplace_secs,
-			const std::vector<sbpl_2Dpt_t> & robot_perimeterV);
-
   struct FullBodyTraversabilityCost
   {
     int cost;
@@ -100,6 +104,43 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
       cost = INFINITECOST;
     }
   };
+
+  
+  // compute the cost of state x, y, theta 
+  // if a wheel position is outside the map: infty
+  // if the cell x, y is outside the map or too high: infty
+  // else: cost = distance to goal
+  int GetCellCost(int X, int Y, int Theta);
+  virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
+  virtual void SetConfiguration(int width, int height,
+			const unsigned char* mapdata,
+			int startx, int starty, int starttheta,
+			int goalx, int goaly, int goaltheta,
+			double cellsize_m, double nominalvel_mpersecs,
+			double timetoturn45degsinplace_secs,
+			const std::vector<sbpl_2Dpt_t> & robot_perimeterV);
+
+
+  //sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta) const;
+  //void discreteToContinuous(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c) const;
+  //void discreteXYToContinuous(int x_d, int y_d, double& x_c, double& y_c) const;
+  //void continuousToDiscrete(sbpl_xy_theta_pt_t pose, int& x, int& y, int& theta) const;
+  //void continuousToDiscrete(double x_c, double y_c, double theta_c, int& x, int& y, int& theta) const;
+  //void continuousXYToDiscrete(double x_c, double y_c, int& x, int& y) const;
+  //Eigen::Vector2i continuousXYToDiscrete(Eigen::Vector2f xy_c) const;
+
+  //sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta) const;
+  sbpl_xy_theta_pt_t gridToWorld(int x, int y, int theta) const;
+  void gridToWorld(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c) const;
+  void grid2dToWorld(int x_d, int y_d, double& x_c, double& y_c) const;
+  void worldToGrid(sbpl_xy_theta_pt_t pose, int& x, int& y, int& theta) const;
+  void worldToGrid(double x_c, double y_c, double theta_c, int& x, int& y, int& theta) const;
+  void world2dToGrid(double x_c, double y_c, int& x, int& y) const;
+  Eigen::Vector2i world2dToGrid(Eigen::Vector2f xy_c) const;
+
+  bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);
+  const FullBodyTraversabilityCost& get_full_body_traversability_cost_info(EnvNAVXYTHETALATHashEntry_t* state);
+
   std::vector<FullBodyTraversabilityCost> full_body_traversability_cost_infos;
   freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
   bool useFreespaceHeuristic_;
@@ -117,17 +158,6 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   ros::Publisher nontravaction_array_publisher;
   ros::Publisher action_array_publisher;
   ros::Publisher endtheta_array_publisher;
-
-  sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta);
-  void discreteToContinuous(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c);
-  void discreteXYToContinuous(int x_d, int y_d, double& x_c, double& y_c);
-  void continuousToDiscrete(sbpl_xy_theta_pt_t pose, int& x, int& y, int& theta);
-  void continuousToDiscrete(double x_c, double y_c, double theta_c, int& x, int& y, int& theta);
-  void continuousXYToDiscrete(double x_c, double y_c, int& x, int& y);
-  Eigen::Vector2i continuousXYToDiscrete(Eigen::Vector2f xy_c);
-
-  bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);
-  const FullBodyTraversabilityCost& get_full_body_traversability_cost_info(EnvNAVXYTHETALATHashEntry_t* state);
 
   // offsets to convert costmap coordinates to world coordinates for 3d collision checks
   double mapOffsetX;
