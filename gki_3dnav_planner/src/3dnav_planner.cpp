@@ -153,7 +153,8 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 			if (!inflation_layer)
 				continue;
 
-			cost_possibly_circumscribed_tresh = inflation_layer->computeCost(costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());
+			cost_possibly_circumscribed_tresh = inflation_layer->computeCost(costmap_ros_->getLayeredCostmap()->getCircumscribedRadius()/costmap_ros_->getCostmap()->getResolution());
+            ROS_INFO("Radii: inscribed: %f circumscribed: %f", costmap_ros_->getLayeredCostmap()->getInscribedRadius(), costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());
 		}
 
 		if (!env_->SetEnvParameter("cost_inscribed_thresh", costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE)))
@@ -504,7 +505,9 @@ bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs:
 	int solution_cost;
 	try
 	{
-		int ret = planner_->replan(allocated_time_, &solution_stateIDs, &solution_cost);
+        env_->resetTimingStats();
+        int ret = planner_->replan(allocated_time_, &solution_stateIDs, &solution_cost);
+        env_->printTimingStats();
 		if (ret)
 			ROS_DEBUG("Solution is found\n");
 		else
