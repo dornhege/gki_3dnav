@@ -1,12 +1,8 @@
 <launch>
   <arg name="debug" default="false" />
-  <arg name="profile" default="false" />
 
-  <group unless="$(arg profile)">
-    <arg unless="$(arg debug)" name="launch_prefix" value="" />
-    <arg     if="$(arg debug)" name="launch_prefix" value="xterm -e gdb --args" />
-  </group>
-    <arg if="$(arg profile)" name="launch_prefix" value="valgrind --tool=callgrind " />
+  <arg unless="$(arg debug)" name="launch_prefix" value="" />
+  <arg     if="$(arg debug)" name="launch_prefix" value="xterm -e gdb --args" />
 
   <node ns="local_costmap" name="voxel_grid_throttle" pkg="topic_tools" type="throttle" args="messages voxel_grid 3.0 voxel_grid_throttled" />
 
