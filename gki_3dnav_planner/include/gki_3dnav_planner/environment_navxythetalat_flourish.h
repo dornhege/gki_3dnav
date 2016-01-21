@@ -19,7 +19,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 {
  public:
   EnvironmentNavXYThetaLatFlourish(ros::NodeHandle* nhPriv, Ais3dTools::TraversableMap tMap);
-  virtual ~EnvironmentNavXYThetaLatFlourish() {}
+  virtual ~EnvironmentNavXYThetaLatFlourish();
 
   // check if the cell given by indices x, y is inside the map and the height is safe for the robot
   bool IsValidCell(int X, int Y);

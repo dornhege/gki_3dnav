@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   visualization_msgs
   color_tools
+  timing
   interactive_markers
   roscpp
   ais3dTools

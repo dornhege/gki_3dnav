@@ -7,9 +7,20 @@
 #include <moveit/move_group/capability_names.h>
 #include <moveit/robot_state/conversions.h>
 #include <tf/transform_datatypes.h>
+#include "timing/timing.h"
+#include <boost/function.hpp>
+#include <boost/bind.hpp>
 
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
+
+struct ScopeExit
+{
+    ScopeExit(boost::function<void ()> fn) : function_(fn) { }
+    ~ScopeExit() { function_(); }
+
+    boost::function<void()> function_;
+};
 
 EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle & nhPriv,
         double costmapOffsetX, double costmapOffsetY) :
@@ -33,6 +44,21 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
 
     planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
     pose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
+
+    timeActionCost = new Timing("action_cost", true, Timing::SP_STATS, false);
+    timeActionCostParent = new Timing("action_cost_parent", true, Timing::SP_STATS, false);
+    timeFullBodyCollision = new Timing("full_body_collision", true, Timing::SP_STATS, false);
+    time3dCheck = new Timing("3d_check", true, Timing::SP_STATS, false);
+    timeHeuristic = new Timing("heuristic", true, Timing::SP_STATS, false);
+}
+
+EnvironmentNavXYThetaLatMoveit::~EnvironmentNavXYThetaLatMoveit()
+{
+    delete timeActionCost;
+    delete timeActionCostParent;
+    delete timeFullBodyCollision;
+    delete time3dCheck;
+    delete timeHeuristic;
 }
 
 //returns the stateid if success, and -1 otherwise
@@ -98,7 +124,12 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatMoveit::CreateNewHashEntry_
 
 int EnvironmentNavXYThetaLatMoveit::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action)
 {
+    timeActionCost->start();
+    ScopeExit se(boost::bind(&Timing::end, timeActionCost));
+
+    timeActionCostParent->start();
     int cost = EnvironmentNAVXYTHETALAT::GetActionCost(SourceX, SourceY, SourceTheta, action);
+    timeActionCostParent->end();
     if(cost >= INFINITECOST)
         return cost;
 
@@ -220,6 +251,8 @@ sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatMoveit::discreteToContinuous(int x, i
 
 bool EnvironmentNavXYThetaLatMoveit::in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state)
 {
+    timeFullBodyCollision->start();
+    ScopeExit se(boost::bind(&Timing::end, timeFullBodyCollision));
     return get_full_body_collision_info(state).collision;
 }
 
@@ -228,6 +261,7 @@ const EnvironmentNavXYThetaLatMoveit::FullBodyCollisionInfo& EnvironmentNavXYThe
     ROS_ASSERT_MSG(full_body_collision_infos.size() > state->stateID, "full_body_collision: state_id mismatch!");
     if (! full_body_collision_infos[state->stateID].initialized)
     {
+        time3dCheck->start();
         sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
         // Static uses this to get an initialized state from the scene
         // that we can subsequently change
@@ -241,12 +275,16 @@ const EnvironmentNavXYThetaLatMoveit::FullBodyCollisionInfo& EnvironmentNavXYThe
         //ROS_INFO("get_full_body_collision_info for (%.2f, %.2f, %.2f) = %d",
         //        pose.x + costmapOffsetX, pose.y + costmapOffsetY,
         //        pose.theta, full_body_collision_infos[state->stateID].collision);
+        time3dCheck->end();
     }
     return full_body_collision_infos[state->stateID];
 }
 
 int EnvironmentNavXYThetaLatMoveit::GetFromToHeuristic(int FromStateID, int ToStateID)
 {
+    timeHeuristic->start();
+    ScopeExit se(boost::bind(&Timing::end, timeHeuristic));
+
     int heur = EnvironmentNAVXYTHETALAT::GetFromToHeuristic(FromStateID, ToStateID);
 
     EnvNAVXYTHETALATHashEntry_t* FromHashEntry = StateID2CoordTable[FromStateID];
@@ -273,6 +311,9 @@ int EnvironmentNavXYThetaLatMoveit::GetFromToHeuristic(int FromStateID, int ToSt
 
 int EnvironmentNavXYThetaLatMoveit::GetStartHeuristic(int stateID)
 {
+    timeHeuristic->start();
+    ScopeExit se(boost::bind(&Timing::end, timeHeuristic));
+
     int heur = EnvironmentNAVXYTHETALAT::GetStartHeuristic(stateID);
 
     EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
@@ -300,6 +341,9 @@ int EnvironmentNavXYThetaLatMoveit::GetStartHeuristic(int stateID)
 
 int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
 {
+    timeHeuristic->start();
+    ScopeExit se(boost::bind(&Timing::end, timeHeuristic));
+
 #if USE_HEUR==0
     return 0;
 #endif
@@ -340,10 +384,28 @@ int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
     return heur;
 }
 
+void EnvironmentNavXYThetaLatMoveit::resetTimingStats()
+{
+    timeActionCost->getStats().reset();
+    timeActionCostParent->getStats().reset();
+    timeFullBodyCollision->getStats().reset();
+    time3dCheck->getStats().reset();
+    timeHeuristic->getStats().reset();
+}
+
+void EnvironmentNavXYThetaLatMoveit::printTimingStats()
+{
+    timeActionCost->printStats(true);
+    timeActionCostParent->printStats(true);
+    timeFullBodyCollision->printStats(true);
+    time3dCheck->printStats(true);
+    timeHeuristic->printStats(true);
+}
+
 moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatMoveit::pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const
 {
     moveit_msgs::DisplayTrajectory dtraj;
-    dtraj.model_id = "robot";    // FIXME this is just for matching?
+    dtraj.model_id = "pr2";    // FIXME this is just for matching?
     if(path.empty())
         return dtraj;
 

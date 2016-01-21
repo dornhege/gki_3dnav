@@ -1139,7 +1139,7 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   Eigen::Vector2i rrWheelIndex = world2dToGrid(rrWheelCoordinates);
   Eigen::Vector2i lrWheelIndex = world2dToGrid(lrWheelCoordinates);
 
-  // check if position of the robot centre and the wheel cells are inside the map and the centre cell is not too high
+  // check if position of the robot centre and the wheel cells are inside the map, the centre cell is not too high and the wheel cells are traversable
   Eigen::Vector2i index(X, Y);
   if(!IsValidCell(X,Y)
      || !tMap.isInside(rfWheelIndex) || !tMap.isInside(lfWheelIndex) 
@@ -1154,6 +1154,7 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   diffGoal.y() = EnvNAVXYTHETALATCfg.EndY_c - Y;
   
   int dist = diffGoal.norm();
+
   //return dist;
 
   return 1;
@@ -1174,17 +1175,13 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   int i;
   
   int startcellcost = GetCellCost(SourceX, SourceY, SourceTheta);
-  //std::cout << "start cell cost = " << startcellcost << std::endl;
 
   //Hack since dX, dY and endtheta are not properly filled in the actions
   int dX_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).x;
   int dY_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).y;
   int endtheta = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).theta;
-  //float endcellcost = GetCellCost(SourceX+dX_d, SourceY+dY_d, action->endtheta);
   int endcellcost = GetCellCost(SourceX+dX_d, SourceY+dY_d, endtheta);
-  //std::cout << "end cell cost = " << endcellcost << std::endl;
   
-
   if(startcellcost == INFINITECOST || endcellcost == INFINITECOST){ 
     return INFINITECOST;
   }
@@ -1196,7 +1193,6 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     interm3Dcell = action->interm3DcellsV.at(i);
     interm3Dcell.x = interm3Dcell.x + SourceX;
     interm3Dcell.y = interm3Dcell.y + SourceY;
-    //std::cout << " th = " << interm3Dcell.theta;
     int intermCost = GetCellCost(interm3Dcell.x, interm3Dcell.y, interm3Dcell.theta);
     // check if cell between start and end position os inside the map
     if(intermCost == INFINITECOST){
@@ -1241,10 +1237,6 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   int endTheta = NORMALIZEDISCTHETA(endtheta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
-  /*if((OutHashEntry = (this->*GetHashEntry)(SourceX, SourceY, SourceTheta)) == NULL){
-  //have to create a new entry
-  OutHashEntry = (this->*CreateNewHashEntry)(SourceX, SourceY, SourceTheta);
-  }*/
 
   if((OutHashEntry = (this->*GetHashEntry)(endX, endY, endTheta)) == NULL){
     //have to create a new entry

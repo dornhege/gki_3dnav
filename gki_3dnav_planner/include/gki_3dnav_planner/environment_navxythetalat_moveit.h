@@ -9,6 +9,7 @@
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
+#include "timing/timing.h"
 
 // TODO
 // Later/Moveit: Needs new init/conversion functions, etc. as costmap is no longer out target
@@ -26,7 +27,7 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
 {
     public:
         EnvironmentNavXYThetaLatMoveit(ros::NodeHandle & nhPriv, double costmapOffsetX, double costmapOffsetY);
-        virtual ~EnvironmentNavXYThetaLatMoveit() {}
+        virtual ~EnvironmentNavXYThetaLatMoveit();
 
         virtual int SetGoal(double x_m, double y_m, double theta_rad);
         virtual int SetStart(double x_m, double y_m, double theta_rad);
@@ -55,6 +56,9 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual int GetGoalHeuristic(int stateID);
 
         moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
+
+        void resetTimingStats();
+        void printTimingStats();
 
         int count;
         int past;
@@ -93,6 +97,12 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         // offsets to convert costmap coordinates to world coordinates for 3d collision checks
         double costmapOffsetX;
         double costmapOffsetY;
+
+        Timing* timeActionCost;
+        Timing* timeActionCostParent;
+        Timing* timeFullBodyCollision;
+        Timing* time3dCheck;
+        Timing* timeHeuristic;
 };
 
 #endif

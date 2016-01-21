@@ -72,6 +72,6 @@
     <!-- Other tools can request additional information be placed here -->
     <!--<cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lgki_3dnav_planner"/>-->
     <nav_core plugin="${prefix}/nav3d_plugin.xml" />
-    	
+
   </export>
 </package>
