@@ -10,6 +10,7 @@
 #include <navigation/mapping/metaMap/base/traversableMap.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <sbpl/utils/key.h>
+#include "timing/timing.h"
 
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 
@@ -59,6 +60,9 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 
   moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped>& path) const;
   void ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath);
+  void resetTimingStats();
+  void printTimingStats();
+
 
   // get euclidean distance from state FromStateID to state ToStateID in m
   virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
@@ -164,6 +168,13 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   double mapOffsetY;
   Ais3dTools::TraversableMap tMap;
   Eigen::Isometry3f rightFrontWheelToBaseLink, leftFrontWheelToBaseLink, rightRearWheelToBaseLink, leftRearWheelToBaseLink;
+
+  Timing* timeActionCost;
+  //Timing* timeActionCostParent;
+  Timing* timeFullBodyCollision;
+  Timing* timeConfigCollisionCheck;
+  Timing* timeTrafoComputation;
+  Timing* timeHeuristic;
 
   float robotHeight;
   float robotBodyHeight;

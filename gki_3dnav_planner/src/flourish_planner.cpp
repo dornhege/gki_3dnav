@@ -116,6 +116,8 @@ namespace flourish_planner{
 
       ROS_INFO("Name is %s", name.c_str());
 
+      std::string traversability_map_file;
+
       private_nh_->param("planner_type", planner_type_, string("ARAPlanner"));
       private_nh_->param("allocated_time", allocated_time_, 10.0);
       private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
@@ -124,6 +126,7 @@ namespace flourish_planner{
       private_nh_->param("primitive_filename", primitive_filename_, string(""));
       private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
       private_nh_->param("use_freespace_heuristic", use_freespace_heuristic_, false);
+      private_nh_->getParam("traversability_map", traversability_map_file);
 
       double nominalvel_mpersecs, timetoturn45degsinplace_secs;
       private_nh_->param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
@@ -144,13 +147,22 @@ namespace flourish_planner{
 
       std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
 
-
+      Ais3dTools::TraversableMap tMap;
+      if(!tMap.loadTraversabilityAndElevation(traversability_map_file.c_str())) {
+	ROS_ERROR("Failed to load traversability map %s", traversability_map_file.c_str());
+      }
+      Eigen::Vector2f offset;
+      tMap.getOffset(offset);
+      std::cout << "size: " << tMap.size().x() << ", " << tMap.size().y() << "; " 
+		<< "offset: " << offset.x() << ", " << offset.y() << "; "
+		<< "resolution: " << tMap.getResolution() << std::endl;
+	
       // initialize traversableMap
       // TODO: initialize stuff consistently (i.e. travmap and cfg)
-      Eigen::Vector2i size(800, 800);
-      double res = 0.025;
+      /*Eigen::Vector2i size(800, 800);
+      double res = 0.15;
       //TODO Eigen::Vector2f offset(costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
-      Eigen::Vector2f offset(-5.f, -5.f);
+      Eigen::Vector2f offset(-55.f, -55.f);
       Ais3dTools::TraversableMap tMap(size, res, offset);
 
       for(size_t i = 0; i < size(0); i++){
@@ -167,6 +179,9 @@ namespace flourish_planner{
 	}
       }
       tMap.computeDistanceMap();
+
+      tMap.saveTraversabilityAndElevation("traversableMap.ppm");*/
+      
 
       env_ = new EnvironmentNavXYThetaLatFlourish(private_nh_, tMap);
 
@@ -226,7 +241,7 @@ namespace flourish_planner{
 				  0, 0, 0, // start (x, y, theta, t)
 				  0, 0, 0, // goal (x, y, theta)
 				  0, 0, 0, //goal tolerance
-				  perimeterptsV, costmap_ros_->getCostmap()->getResolution(), nominalvel_mpersecs, timetoturn45degsinplace_secs, obst_cost_thresh, primitive_filename_.c_str());
+				  perimeterptsV, tMap.getResolution(), nominalvel_mpersecs, timetoturn45degsinplace_secs, obst_cost_thresh, primitive_filename_.c_str());
       } catch (SBPL_Exception* e){
 	ROS_ERROR("SBPL encountered a fatal exception! %s", e->what());
 	ret = false;
@@ -468,7 +483,9 @@ namespace flourish_planner{
     vector<int> solution_stateIDs;
     int solution_cost;
     try{
+      env_->resetTimingStats();
       int ret = planner_->replan(allocated_time_, &solution_stateIDs, &solution_cost);
+      env_->printTimingStats();
       if (ret)
 	ROS_DEBUG("Solution is found\n");
       else{

@@ -10,7 +10,10 @@
     <param name="controller_frequency" value="10.0" />
     <param name="controller_patience" value="100.0" />
     <param name="base_global_planner" value="flourish_planner/FlourishPlanner" />
-    <param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_sbpl.mprim" />
+    <param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/bonirob_0.15_16_plussideways.mprim" />
+    <param name="FlourishPlanner/traversability_map" value="$(find gki_3dnav_planner)/config/traversableMap.ppm" />
+    <param name="FlourishPlanner/freespace_heuristic_costmap" value="$(find gki_3dnav_planner)/config/bonirob_0.15_16_plussideways.mprim_costmap.dat" />
+	<!-- <param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_sbpl.mprim" /> -->
     <!-- param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_base.mprim" -->
     <!--param name="FlourishPlanner/primitive_filename" value="$(find gki_3dnav_planner)/config/pr2_5cm_plussideways.mprim" /-->
 

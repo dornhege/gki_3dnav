@@ -7,3 +7,9 @@ envcfg sinnvoll fuellen, Grid2d mit max(possiblewheelcells height)-height
 initialize stuff angucken (initEnv, initGeneral,...) + sinnvoll ersetzen
 write new ReadConfiguration, EnsureHeuristicsUpdated, SetMap,  
 fix theta in actions
+
+samplevalidposes
+publishstats
+code aufraeumen
+karten erzeugen
+elevation

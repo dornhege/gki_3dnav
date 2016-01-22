@@ -7,13 +7,15 @@
 #include <moveit/move_group/capability_names.h>
 #include <moveit/robot_state/conversions.h>
 #include <tf/transform_datatypes.h>
+#include "timing/timing.h"
+#include <boost/function.hpp>
+#include <boost/bind.hpp>
 
 #include <tf/tfMessage.h>
 #include <tf/transform_listener.h>
 #include <geometry_msgs/PoseStamped.h>
 
 #include <basics/transformationRepresentation.h>
-#include <basics/timeutil.h>
 
 #include <interactive_markers/interactive_marker_server.h>
 
@@ -25,6 +27,14 @@
 
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
+
+struct ScopeExit
+{
+  ScopeExit(boost::function<void ()> fn) : function_(fn) { }
+  ~ScopeExit() { function_(); }
+
+  boost::function<void()> function_;
+};
 
 Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
   tf::Vector3 trans = trafo.getOrigin();
@@ -112,6 +122,13 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   action_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
   endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
 
+  timeActionCost = new Timing("action_cost", true, Timing::SP_STATS, false);
+  //timeActionCostParent = new Timing("action_cost_parent", true, Timing::SP_STATS, false);
+  timeFullBodyCollision = new Timing("full_body_collision", true, Timing::SP_STATS, false);
+  timeConfigCollisionCheck = new Timing("time_config_collision_check", true, Timing::SP_STATS, false);
+  timeTrafoComputation = new Timing("time_trafo_computation", true, Timing::SP_STATS, false);
+  timeHeuristic = new Timing("heuristic", true, Timing::SP_STATS, false);
+
   // Debug
   ///////////////////////////////////////////////////////////////////////////
   ////////////// interactive marker /////////////////////////////////////////
@@ -184,14 +201,24 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
 }
 
 
+EnvironmentNavXYThetaLatFlourish::~EnvironmentNavXYThetaLatFlourish()
+{
+  delete timeActionCost;
+  //delete timeActionCostParent;
+  delete timeFullBodyCollision;
+  delete timeConfigCollisionCheck;
+  delete timeTrafoComputation;
+  delete timeHeuristic;
+}
+
 bool EnvironmentNavXYThetaLatFlourish::IsValidCell(int X, int Y){
   Eigen::Vector2i index(X,Y);
-  if(!tMap.isInside(index) ||
-     tMap.cell(X,Y).getElevation() >= robotSafeHeight){
-    std::cerr << "non valid cell " << X << ", " << Y << std::endl;
-  }
+  //if(!tMap.isInside(index) ||
+  //   tMap.cell(X,Y).getElevation() > robotSafeHeight){
+  //  std::cerr << "non valid cell " << X << ", " << Y << std::endl;
+  //}
   return (tMap.isInside(index) &&
-	  tMap.cell(X,Y).getElevation() < robotSafeHeight);
+	  tMap.cell(X,Y).getElevation() <= robotSafeHeight);
 }
 
 bool EnvironmentNavXYThetaLatFlourish::IsWithinMapCell(int X, int Y){
@@ -250,7 +277,7 @@ int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double th
   ROS_INFO("env: setting start to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
 
   if(!IsValidConfiguration(x,y,theta)){
-    ROS_ERROR("ERROR: start state in collision or out of map\n", x, y);
+    ROS_ERROR("ERROR: start state in collision or out of map (%d, %d, %d)\n", x, y, theta);
     EnvNAVXYTHETALAT.startstateid = -1;
     return -1;
   }
@@ -275,7 +302,7 @@ int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double th
   EnvNAVXYTHETALATCfg.StartTheta = theta;
   
   if (in_full_body_collision(OutHashEntry)) {
-    ROS_ERROR("ERROR: start state in collision\n", x, y);
+    ROS_ERROR("ERROR: start state %d %d in collision\n", x, y);
     EnvNAVXYTHETALAT.startstateid = -1;
     return -1;
   }
@@ -548,6 +575,27 @@ void EnvironmentNavXYThetaLatFlourish::computeWheelPositions(){
   publish_wheel_cells(possibleWheelCells[0]);
 }
 
+
+void EnvironmentNavXYThetaLatFlourish::resetTimingStats()
+{
+  timeActionCost->getStats().reset();
+  //timeActionCostParent->getStats().reset();
+  timeFullBodyCollision->getStats().reset();
+  timeConfigCollisionCheck->getStats().reset();
+  timeTrafoComputation->getStats().reset();
+  timeHeuristic->getStats().reset();
+}
+
+ void EnvironmentNavXYThetaLatFlourish::printTimingStats()
+ {
+   timeActionCost->printStats(true);
+   //timeActionCostParent->printStats(true);
+   timeFullBodyCollision->printStats(true);
+   timeConfigCollisionCheck->printStats(true);
+   timeTrafoComputation->printStats(true);
+   timeHeuristic->printStats(true);
+ }
+
 moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatFlourish::pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const
 {
   moveit_msgs::DisplayTrajectory dtraj;
@@ -685,6 +733,8 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
 
 int EnvironmentNavXYThetaLatFlourish::GetStartHeuristic(int stateID)
 {
+  timeHeuristic->start();
+  ScopeExit se(boost::bind(&Timing::end, timeHeuristic));
 #if USE_HEUR==0
   return 0;
 #endif
@@ -727,6 +777,9 @@ int EnvironmentNavXYThetaLatFlourish::GetStartHeuristic(int stateID)
 }
 
 int EnvironmentNavXYThetaLatFlourish::GetFromToHeuristic(int FromStateID, int ToStateID){
+  timeHeuristic->start();
+  ScopeExit se(boost::bind(&Timing::end, timeHeuristic));
+
   int heur = EnvironmentNAVXYTHETALAT::GetFromToHeuristic(FromStateID, ToStateID);
 
   int hfs = 0;
@@ -755,6 +808,9 @@ int EnvironmentNavXYThetaLatFlourish::GetFromToHeuristic(int FromStateID, int To
 
 int EnvironmentNavXYThetaLatFlourish::GetGoalHeuristic(int stateID)
 {
+  timeHeuristic->start();
+  ScopeExit se(boost::bind(&Timing::end, timeHeuristic));
+
 #if USE_HEUR==0
   return 0;
 #endif
@@ -1121,11 +1177,15 @@ void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization
 }
 
 int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
+  timeConfigCollisionCheck->start();
+  ScopeExit se(boost::bind(&Timing::end, timeConfigCollisionCheck));
+  //TODO: also check other footprint cells for height
   int theta = NORMALIZEDISCTHETA(Theta, NAVXYTHETALAT_THETADIRS);
   sbpl_xy_theta_pt_t coords = gridToWorld(X, Y, Theta);
   Eigen::Isometry3f baseTrafo = Eigen::Isometry3f::Identity();
   Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafo);
 
+  timeTrafoComputation->start();
   Eigen::Isometry3f rfWheelToGlobal = baseTrafo*rightFrontWheelToBaseLink;
   Eigen::Isometry3f lfWheelToGlobal = baseTrafo*leftFrontWheelToBaseLink;
   Eigen::Isometry3f rrWheelToGlobal = baseTrafo*rightRearWheelToBaseLink;
@@ -1138,6 +1198,7 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   Eigen::Vector2i lfWheelIndex = world2dToGrid(lfWheelCoordinates);
   Eigen::Vector2i rrWheelIndex = world2dToGrid(rrWheelCoordinates);
   Eigen::Vector2i lrWheelIndex = world2dToGrid(lrWheelCoordinates);
+  timeTrafoComputation->end();
 
   // check if position of the robot centre and the wheel cells are inside the map, the centre cell is not too high and the wheel cells are traversable
   Eigen::Vector2i index(X, Y);
@@ -1149,17 +1210,9 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
     return INFINITECOST;
   }
 
-  Eigen::Vector2i diffGoal;
-  diffGoal.x() = EnvNAVXYTHETALATCfg.EndX_c - X;
-  diffGoal.y() = EnvNAVXYTHETALATCfg.EndY_c - Y;
-  
-  int dist = diffGoal.norm();
-
-  //return dist;
-
   return 1;
 
-  // TODO: compute sensible cost
+  // TODO: compute sensible cost with dist from nearest obstacle
 }
 
 /*int EnvironmentNavXYThetaLatFlourish::ComputeCosts(int SourceX, int SourceY, int SourceTheta){
@@ -1168,7 +1221,11 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   }*/
 
 int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action){
-  //AIS3DTOOLS_MEASURE_FUNCTION_TIME;
+  timeActionCost->start();
+  ScopeExit se(boost::bind(&Timing::end, timeActionCost));
+
+  //timeActionCostParent->start();
+
   int cost;
   sbpl_2Dcell_t cell;
   EnvNAVXYTHETALAT3Dcell_t interm3Dcell;
@@ -1227,6 +1284,7 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
   int currentmaxcost = (int)std::max(maxcellcost, endcellcost);
  
   cost = action->cost*(currentmaxcost+1); //use cell cost as multiplicative factor
+  //timeActionCostParent->end();
 
   if(cost >= INFINITECOST)
     return cost;
@@ -1243,11 +1301,10 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     OutHashEntry = (this->*CreateNewHashEntry)(endX, endY, endTheta);
   }
 
-  get_full_body_traversability_cost_info(OutHashEntry);
-  //if(in_full_body_collision(OutHashEntry))
-  //  return INFINITECOST;
-  //
-
+  //get_full_body_traversability_cost_info(OutHashEntry);
+  if(in_full_body_collision(OutHashEntry)){
+    return INFINITECOST;
+  }
   return cost;
 }
 
@@ -1397,6 +1454,8 @@ Eigen::Vector2i EnvironmentNavXYThetaLatFlourish::world2dToGrid(Eigen::Vector2f 
 
 bool EnvironmentNavXYThetaLatFlourish::in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state)
 {
+  timeFullBodyCollision->start();
+  ScopeExit se(boost::bind(&Timing::end, timeFullBodyCollision));
   return (get_full_body_traversability_cost_info(state).cost >= INFINITECOST);
 }
 
@@ -1404,21 +1463,23 @@ const EnvironmentNavXYThetaLatFlourish::FullBodyTraversabilityCost& EnvironmentN
 {
   ROS_ASSERT_MSG(full_body_traversability_cost_infos.size() > state->stateID, "full_body_collision: state_id mismatch!");
   if (! full_body_traversability_cost_infos[state->stateID].initialized){
+    //timeConfigCollisionCheck->start();
     //sbpl_xy_theta_pt_t pose = gridToWorld(state->X, state->Y, state->Theta);
     // Static uses this to get an initialized state from the scene
     // that we can subsequently change
 
     full_body_traversability_cost_infos[state->stateID].initialized = true;
     //full_body_collision_infos[state->stateID].collision = getPlanningScene()->isStateColliding(robot_state);
-    full_body_traversability_cost_infos[state->stateID].cost = 1; //TODO GetCellCost(state->X, state->Y, state->Theta);?
+    full_body_traversability_cost_infos[state->stateID].cost = GetCellCost(state->X, state->Y, state->Theta); // TODO: check
     //double x, y;
     //grid2dToWorld(state->X, state->Y, x, y);
-    //std::cout << "initializing " << state->X << ", " << state->Y 
+    //std::cout << "initializing " << state->X << ", " << state->Y << std::endl;
     //		<< "; " << x << ", " << y 
     //		<< std::endl;
     //ROS_INFO("get_full_body_collision_info for (%.2f, %.2f, %.2f) = %d",
     //        pose.x + costmapOffsetX, pose.y + costmapOffsetY,
     //        pose.theta, full_body_collision_infos[state->stateID].collision);
+    //timeConfigCollisionCheck->end();
   }
   return full_body_traversability_cost_infos[state->stateID];
 }
