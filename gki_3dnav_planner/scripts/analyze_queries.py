@@ -96,9 +96,11 @@ def make_time_histogram(ax, data, fn):
 
 def main():
     pq_name = sys.argv[1]
+    param_name = sys.argv[2]
+    
     with open(pq_name, 'r') as f:
         data = yaml.load(f)
-    assert len(data['freespace_stats']) == len(data['no_freespace_stats'])
+    assert len(data[param_name+'_true_stats']) == len(data[param_name+'_false_stats'])
 
     f, axx = plt.subplots(3, 2)
 
