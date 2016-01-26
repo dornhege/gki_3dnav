@@ -1,5 +1,5 @@
-#ifndef SBPL_LATTICE_PLANNER_H
-#define SBPL_LATTICE_PLANNER_H
+#ifndef FLOURISH_PLANNER_H
+#define FLOURISH_PLANNER_H
 
 #include <iostream>
 #include <vector>
@@ -105,7 +105,7 @@ namespace flourish_planner
     unsigned char inscribed_inflated_obstacle_;
     unsigned char sbpl_cost_multiplier_;
 
-    costmap_2d::Costmap2DROS* costmap_ros_; /**< manages the cost map for us */
+    costmap_2d::Costmap2DROS* costmap_ros_; /**< manages the cost map for us. currently only used to get footprint. */
 
     ros::Publisher plan_pub_;
     ros::Publisher stats_publisher_;

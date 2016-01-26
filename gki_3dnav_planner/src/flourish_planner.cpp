@@ -578,12 +578,12 @@ namespace flourish_planner{
     //create a message for the plan
     nav_msgs::Path gui_path;
     gui_path.poses.resize(sbpl_path.size());
-    gui_path.header.frame_id = costmap_ros_->getGlobalFrameID();
+    gui_path.header.frame_id = env_->getPlanningScene()->getPlanningFrame(); // costmap_ros_->getGlobalFrameID();
     gui_path.header.stamp = plan_time;
     for (unsigned int i = 0; i < sbpl_path.size(); i++){
       geometry_msgs::PoseStamped pose;
       pose.header.stamp = plan_time;
-      pose.header.frame_id = costmap_ros_->getGlobalFrameID();
+      pose.header.frame_id = env_->getPlanningScene()->getPlanningFrame(); // costmap_ros_->getGlobalFrameID();
 
       pose.pose.position.x = sbpl_path[i].x;// + costmap_ros_->getCostmap()->getOriginX();
       pose.pose.position.y = sbpl_path[i].y;// + costmap_ros_->getCostmap()->getOriginY();
