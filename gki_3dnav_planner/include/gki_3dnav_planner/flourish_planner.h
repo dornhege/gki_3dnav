@@ -13,9 +13,12 @@ using namespace std;
 #include <costmap_2d/costmap_2d_ros.h>
 
 // sbpl headers
-#include "gki_3dnav_planner/environment_navxythetalat_flourish.h"
 #include <sbpl/headers.h>
+
+#include "gki_3dnav_planner/environment_navxythetalat_flourish.h"
 #include <geometry_msgs/Pose2D.h>
+
+#include <gki_3dnav_planner/SampleValidPoses.h>
 
 //global representation
 #include <nav_core/base_global_planner.h>
@@ -70,6 +73,8 @@ namespace flourish_planner
       }
     ;
 
+  protected:
+    bool sampleValidPoses(gki_3dnav_planner::SampleValidPoses::Request & req, gki_3dnav_planner::SampleValidPoses::Response & resp);
   private:
     bool makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan);
     bool transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped);
@@ -106,6 +111,8 @@ namespace flourish_planner
     ros::Publisher stats_publisher_;
     ros::Publisher traj_pub_;
     ros::Publisher expansions_publisher_;
+
+    ros::ServiceServer srv_sample_poses_;
 
     std::vector<geometry_msgs::Point> footprint_;
 

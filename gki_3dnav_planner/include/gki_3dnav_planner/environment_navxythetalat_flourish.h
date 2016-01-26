@@ -31,6 +31,9 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   // check if the traversable map says cell x, y is traversable or not
   bool IsObstacle(int x, int y);
   bool IsObstacle(Eigen::Vector2i index);
+  double getMapOffsetX() { return mapOffsetX; }
+  double getMapOffsetY() { return mapOffsetY; }
+  const Ais3dTools::TraversableMap& traversableMap() const { return tMap; }
 
   // if x, y, theta is a valid configuration:
   // sets the start state for the planning task to x_m, y_m, theta_rad
@@ -88,10 +91,10 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   // DEBUGGING
   /// Publish the currently used planning scene instance.
   virtual void publish_planning_scene();
-  virtual void publish_expanded_states();
+  //virtual void publish_expanded_states();
   void publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells);
   void publish_traversable_map();
-  void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
+  //void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
 
   int count;
   int past;
@@ -157,11 +160,11 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   ros::Publisher traversable_map_publisher;
   std::vector<std::string> allowed_collision_links;
 
-  ros::Publisher pose_array_publisher;
-  ros::Publisher nontravpose_array_publisher;
-  ros::Publisher nontravaction_array_publisher;
-  ros::Publisher action_array_publisher;
-  ros::Publisher endtheta_array_publisher;
+  //ros::Publisher pose_array_publisher;
+  //ros::Publisher nontravpose_array_publisher;
+  //ros::Publisher nontravaction_array_publisher;
+  //ros::Publisher action_array_publisher;
+  //ros::Publisher endtheta_array_publisher;
 
   // offsets to convert costmap coordinates to world coordinates for 3d collision checks
   double mapOffsetX;

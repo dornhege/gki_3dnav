@@ -151,11 +151,6 @@ namespace flourish_planner{
       if(!tMap.loadTraversabilityAndElevation(traversability_map_file.c_str())) {
 	ROS_ERROR("Failed to load traversability map %s", traversability_map_file.c_str());
       }
-      Eigen::Vector2f offset;
-      tMap.getOffset(offset);
-      std::cout << "size: " << tMap.size().x() << ", " << tMap.size().y() << "; " 
-		<< "offset: " << offset.x() << ", " << offset.y() << "; "
-		<< "resolution: " << tMap.getResolution() << std::endl;
 	
       // initialize traversableMap
       // TODO: initialize stuff consistently (i.e. travmap and cfg)
@@ -220,21 +215,6 @@ namespace flourish_planner{
 
       bool ret;
       try{
-	/*FILE* bla = fopen(primitive_filename_.c_str(), "r");
-	  if(bla != NULL){
-	  if(env_->tryToReadPrims(bla) == false)
-	  {
-	  SBPL_ERROR("ERROR: failed to read in motion primitive file\n");
-	  ROS_ERROR("sbpl exception");
-	  }else{
-	  ROS_ERROR("sbpl non exception");
-	  }
-	  std::cout << "read file" << std::endl;
-	  }else{
-	  std::cout << "couldn't read file" << std::endl;
-	  }
-
-	  fclose(bla);*/
 	ret = env_->InitializeEnv(tMap.size()(0), // width
 				  tMap.size()(1), // height
 				  0, // mapdata
@@ -268,15 +248,13 @@ namespace flourish_planner{
 
       ROS_INFO("[gki_3dnav_planner] Initialized successfully");
       plan_pub_ = private_nh_->advertise<nav_msgs::Path>("plan", 1);
-      //stats_publisher_ = private_nh_->advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
+      stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
       traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
       expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
 
-      // TODO: do we need this?
-      /*srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
+      srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
 							&FlourishPlanner::sampleValidPoses, this);
-
-							srand48(time(NULL));*/
+      srand48(time(NULL));
 
 
       initialized_ = true;
@@ -299,6 +277,20 @@ namespace flourish_planner{
 
   void FlourishPlanner::publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal)
   {
+    gki_3dnav_planner::PlannerStats stats;
+    std::vector< ::PlannerStats > planner_stats;
+    planner_->get_search_stats(&planner_stats);
+    for(int i = 0; i < planner_stats.size(); ++i) {
+      gki_3dnav_planner::PlannerStat stat;
+      stat.eps = planner_stats[i].eps;
+      stat.suboptimality = planner_stats[i].suboptimality;
+      stat.time = planner_stats[i].time;
+      stat.g = planner_stats[i].g;
+      stat.cost = planner_stats[i].cost;
+      stat.expands = planner_stats[i].expands;
+      stats.stats.push_back(stat);
+    }
+    stats_publisher_.publish(stats);
     // Fill up statistics and publish
     //	sbpl_lattice_planner::SBPLLatticePlannerStats stats;
     //	stats.initial_epsilon = initial_epsilon_;
@@ -334,6 +326,72 @@ namespace flourish_planner{
     }
     return true;
   }
+
+  bool FlourishPlanner::sampleValidPoses(gki_3dnav_planner::SampleValidPoses::Request & req, gki_3dnav_planner::SampleValidPoses::Response & resp)
+  {
+    env_->clear_full_body_traversability_cost_infos();
+    env_->update_planning_scene();
+    planning_scene::PlanningSceneConstPtr scene = env_->getPlanningScene();
+    /*collision_detection::CollisionWorld::ObjectConstPtr octomapObj = scene->getWorld()->getObject(planning_scene::PlanningScene::OCTOMAP_NS);
+    if(!octomapObj)
+      return false;
+    if(octomapObj->shapes_.size() != 1)
+      return false;
+
+    const shapes::OcTree* o = static_cast<const shapes::OcTree*>(octomapObj->shapes_[0].get());
+    assert(o->octree);
+    const octomap::OcTree & octree = *(o->octree);
+    geometry_msgs::Point min, max;
+    octree.getMetricMin(min.x, min.y, min.z);
+    octree.getMetricMax(max.x, max.y, max.z);*/
+
+    geometry_msgs::Point min, max; 
+    Eigen::Vector2i mapSize = env_->traversableMap().size();
+    min.x = env_->getMapOffsetX();
+    min.y = env_->getMapOffsetY();
+    min.z = std::numeric_limits<double>::infinity();
+    max.x = env_->getMapOffsetX()+env_->traversableMap().getResolution()*mapSize.x();
+    max.y = env_->getMapOffsetY()+env_->traversableMap().getResolution()*mapSize.y();
+    max.z = -std::numeric_limits<double>::infinity();
+    for(size_t i = 0; i < mapSize(0); ++i){
+      for(size_t j = 0; j < mapSize(1); ++j){
+	double elevation = env_->traversableMap().cell(i,j).getElevation();
+	if(elevation < min.z){
+	  min.z = elevation;
+	}
+	if(elevation > max.z){
+	  max.z = elevation;
+	}
+      }
+    }
+
+    geometry_msgs::Pose pose;
+    resp.poses.header.frame_id = scene->getPlanningFrame();
+    int numTries = 0;
+    while(numTries < req.max_tries) {
+      // sample pose and add to resp
+      pose.position.x = min.x + (max.x - min.x) * drand48();
+      pose.position.y = min.y + (max.y - min.y) * drand48();
+      double theta = -M_PI + 2 * M_PI * drand48();
+      pose.orientation = tf::createQuaternionMsgFromYaw(theta);
+
+      numTries++;
+      try {
+	int ret = env_->SetStart(pose.position.x, pose.position.y, theta);
+	if(ret < 0)
+	  continue;
+      } catch (SBPL_Exception& e) {
+	continue;
+      }
+
+      resp.poses.poses.push_back(pose);
+      if(resp.poses.poses.size() >= req.n)
+	break;
+    }
+
+    return resp.poses.poses.size() >= req.n;
+  }
+
 
   /*bool FlourishPlanner::makePlan(planning_scene::PlanningSceneConstPtr scene, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan)
     {
@@ -546,7 +604,7 @@ namespace flourish_planner{
     publishStats(solution_cost, sbpl_path.size(), start, goal);
 
     // DeBUG
-    env_->publish_expanded_states();
+    //env_->publish_expanded_states();
     publish_expansions();
     return true;
   }

@@ -116,11 +116,11 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   //Debug 
   planning_scene_publisher = nhPriv->advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
   traversable_map_publisher = nhPriv->advertise<visualization_msgs::Marker>("travmap", 1, true); 
-  pose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
-  nontravpose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
-  nontravaction_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_actions", 1, true);
-  action_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
-  endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
+  //pose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
+  //nontravpose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
+  //nontravaction_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_actions", 1, true);
+  //action_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
+  //endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
 
   timeActionCost = new Timing("action_cost", true, Timing::SP_STATS, false);
   //timeActionCostParent = new Timing("action_cost_parent", true, Timing::SP_STATS, false);
@@ -134,11 +134,11 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   ////////////// interactive marker /////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////  
   // create an interactive marker server on the topic namespace simple_marker
-  interserver = new interactive_markers::InteractiveMarkerServer("simple_marker");
+  /*interserver = new interactive_markers::InteractiveMarkerServer("simple_marker");
 
   // create an interactive marker for our server
   visualization_msgs::InteractiveMarker int_marker;
-  int_marker.header.frame_id = "odom";
+  int_marker.header.frame_id = getPlanningScene()->getPlanningFrame();
   int_marker.header.stamp=ros::Time::now();
   int_marker.name = "my_marker";
   int_marker.description = "Simple 1-DOF Control";
@@ -196,7 +196,7 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   interserver->insert(int_marker, boost::bind(&EnvironmentNavXYThetaLatFlourish::processMarkerFeedback, this, _1));
 
   // 'commit' changes and send to all clients
-  interserver->applyChanges();
+  interserver->applyChanges();*/
   //////////////////////////////////////end of interactive marker stuff////////////////////////////////////
 }
 
@@ -323,7 +323,7 @@ int EnvironmentNavXYThetaLatFlourish::SetGoal(double x_m, double y_m, double the
   }
 
   if(!IsValidConfiguration(x,y,theta)){
-    ROS_ERROR("ERROR: goal state in collision or out of map \n", x, y);
+    ROS_ERROR("ERROR: goal state %d %d in collision or out of map \n", x, y);
     EnvNAVXYTHETALAT.goalstateid = -1;
     return -1;
   }
@@ -941,15 +941,12 @@ void EnvironmentNavXYThetaLatFlourish::publish_planning_scene()
 }
 
 
-void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
+/*void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
 {
-  //TODO
-  planningFrameID = "odom";
-
   geometry_msgs::PoseArray msg;
   geometry_msgs::PoseArray nontravmsg;
-  msg.header.frame_id = planningFrameID;//TODO getPlanningScene()->getPlanningFrame();
-  nontravmsg.header.frame_id = planningFrameID;//TODO getPlanningScene()->getPlanningFrame();
+  msg.header.frame_id = getPlanningScene()->getPlanningFrame();
+  nontravmsg.header.frame_id = getPlanningScene()->getPlanningFrame();
   //msg.header.stamp = ros::Time::now();
   for (size_t id = 0; id < full_body_traversability_cost_infos.size(); id++){
     if (full_body_traversability_cost_infos[id].initialized && full_body_traversability_cost_infos[id].cost < INFINITECOST){
@@ -977,7 +974,7 @@ void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
   }
   pose_array_publisher.publish(msg);
   nontravpose_array_publisher.publish(nontravmsg);
-}
+  }*/
 
 void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
   if(tMap.size()(0) == 0 || tMap.size()(1) == 0){
@@ -985,11 +982,8 @@ void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
     return;
   }
 
-  //TODO
-  planningFrameID = "odom";
-
   visualization_msgs::Marker marker;
-  marker.header.frame_id = planningFrameID;
+  marker.header.frame_id = getPlanningScene()->getPlanningFrame();
   marker.header.stamp = ros::Time::now();
   marker.ns = "traversability_map";
   marker.id = 0;
@@ -1053,11 +1047,8 @@ void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
 
 
 void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells){
-  //TODO
-  planningFrameID = "odom";
-
   visualization_msgs::Marker marker;
-  marker.header.frame_id = planningFrameID;
+  marker.header.frame_id = getPlanningScene()->getPlanningFrame();
   marker.header.stamp = ros::Time::now();
   marker.ns = "wheel_cells";
   marker.id = 0;
@@ -1102,12 +1093,12 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
 
 
 
-void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback )
+/*void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback )
 {
   ROS_INFO_STREAM( feedback->marker_name << " is now at "
 		   << feedback->pose.position.x << ", " << feedback->pose.position.y
 		   << ", " << feedback->pose.position.z );
-  planningFrameID = "odom"; //TODO
+  planningFrameID = getPlanningScene()->getPlanningFrame();
 
   geometry_msgs::PoseArray travmsg;
   geometry_msgs::PoseArray nontravmsg;
@@ -1174,7 +1165,7 @@ void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization
   action_array_publisher.publish(travmsg);
   nontravaction_array_publisher.publish(nontravmsg);
   endtheta_array_publisher.publish(endthetamsg);
-}
+  }*/
 
 int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   timeConfigCollisionCheck->start();
