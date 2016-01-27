@@ -40,7 +40,6 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
                 freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapMaxCost);
     }
 
-    // TODO move to init env
     update_planning_scene();
 
     planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
@@ -60,6 +59,23 @@ EnvironmentNavXYThetaLatMoveit::~EnvironmentNavXYThetaLatMoveit()
     delete timeFullBodyCollision;
     delete time3dCheck;
     delete timeHeuristic;
+}
+
+bool EnvironmentNavXYThetaLatMoveit::InitializeEnv(int width, int height, const unsigned char* mapdata,
+        double startx, double starty, double starttheta,
+        double goalx, double goaly, double goaltheta,
+        double goaltol_x, double goaltol_y, double goaltol_theta,
+        const std::vector<sbpl_2Dpt_t>& perimeterptsV, double cellsize_m,
+        double nominalvel_mpersecs, double timetoturn45degsinplace_secs,
+        unsigned char obsthresh, const char* sMotPrimFile)
+{
+    poseWorldToEnv(startx, starty, starttheta, startx, starty, starttheta); 
+    poseWorldToEnv(goalx, goaly, goaltheta, goalx, goaly, goaltheta); 
+    return EnvironmentNAVXYTHETALAT::InitializeEnv(width, height, mapdata,
+            startx, starty, starttheta, goalx, goaly, goaltheta,
+            goaltol_x, goaltol_y, goaltol_theta,
+            perimeterptsV, cellsize_m, nominalvel_mpersecs, timetoturn45degsinplace_secs,
+            obsthresh, sMotPrimFile);
 }
 
 //returns the stateid if success, and -1 otherwise
@@ -517,5 +533,17 @@ moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatMoveit::pathToDisplayTraj
 
     dtraj.trajectory.push_back(traj);
     return dtraj;
+}
+
+bool EnvironmentNavXYThetaLatMoveit::InitializeEnv(const char* sEnvFile,
+        const std::vector<sbpl_2Dpt_t>& perimeterptsV,
+        const char* sMotPrimFile)
+{
+    return EnvironmentNAVXYTHETALAT::InitializeEnv(sEnvFile, perimeterptsV, sMotPrimFile);
+}
+
+bool EnvironmentNavXYThetaLatMoveit::InitializeEnv(const char* sEnvFile)
+{
+    return EnvironmentNAVXYTHETALAT::InitializeEnv(sEnvFile);
 }
 

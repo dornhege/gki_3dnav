@@ -149,7 +149,11 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 
         env_ = new EnvironmentNavXYThetaLatMoveit(*private_nh_, costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
 
-        if(costmap_ros_->getGlobalFrameID() != getPlanningFrame()) {
+        std::string costmapFrameId = costmap_ros_->getGlobalFrameID();
+        if(!costmapFrameId.empty() && !(costmapFrameId[0] == '/')) {
+            costmapFrameId = "/" + costmapFrameId;
+        }
+        if(costmapFrameId != getPlanningFrame()) {
             ROS_ERROR("Costmap is not in the planning frame (%s), but in frame %s and will not be converted! This is unlikely to produce correct results. Make sure the costmap frame and MoveIt planning frame are the same.",
                     getPlanningFrame().c_str(), costmap_ros_->getGlobalFrameID().c_str());
         }
@@ -191,14 +195,20 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
         bool ret;
         try
         {
-            // TODO use other init with less params
             ret = env_->InitializeEnv(costmap_ros_->getCostmap()->getSizeInCellsX(), // width
                     costmap_ros_->getCostmap()->getSizeInCellsY(), // height
-                    0, // mapdata
-                    0, 0, 0, // start (x, y, theta, t)
-                    0, 0, 0, // goal (x, y, theta)
+                    NULL, // mapdata
+                    // start/goal (x, y, theta)
+                    // we really don't care at this point as this depends on the query,
+                    // use costmap origin, so that the coords are in the map.
+                    costmap_ros_->getCostmap()->getOriginX() + costmap_ros_->getCostmap()->getResolution(),
+                    costmap_ros_->getCostmap()->getOriginY() + costmap_ros_->getCostmap()->getResolution(), 0.0,
+                    costmap_ros_->getCostmap()->getOriginX() + costmap_ros_->getCostmap()->getResolution(),
+                    costmap_ros_->getCostmap()->getOriginY() + costmap_ros_->getCostmap()->getResolution(), 0.0,
                     0, 0, 0, //goal tolerance
-                    perimeterptsV, costmap_ros_->getCostmap()->getResolution(), nominalvel_mpersecs, timetoturn45degsinplace_secs, obst_cost_thresh, primitive_filename_.c_str());
+                    perimeterptsV, costmap_ros_->getCostmap()->getResolution(),
+                    nominalvel_mpersecs, timetoturn45degsinplace_secs,
+                    obst_cost_thresh, primitive_filename_.c_str());
         } catch (SBPL_Exception& e)
         {
             ROS_ERROR("SBPL encountered a fatal exception!");

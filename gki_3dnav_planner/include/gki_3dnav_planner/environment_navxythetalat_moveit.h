@@ -52,21 +52,20 @@
  * External use, e.g., updating the grid, usually from the costmap cannot assume
  * that the grid coordinates are valid for costmap coordinates. These functions
  * would need to use the ...Costmap style function, which convert.
- *
- *
- * TODO
- * InitializeEnv gets costmap size, resolution and does what?
- * -> goes to SetConfiguration and just discretizes the coords -> doesnt know offsets
- * -> This defines the internal grid, disc coords must be  0 - width, etc.
- *
  */
 class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
 {
     public:
-        // TODO need new initialize env with costmap size and these offsets
-        // forbid all others
         EnvironmentNavXYThetaLatMoveit(ros::NodeHandle & nhPriv, double costmapOffsetX, double costmapOffsetY);
         virtual ~EnvironmentNavXYThetaLatMoveit();
+
+        virtual bool InitializeEnv(int width, int height, const unsigned char* mapdata,
+                double startx, double starty, double starttheta,
+                double goalx, double goaly, double goaltheta,
+                double goaltol_x, double goaltol_y, double goaltol_theta,
+                const std::vector<sbpl_2Dpt_t>& perimeterptsV, double cellsize_m,
+                double nominalvel_mpersecs, double timetoturn45degsinplace_secs,
+                unsigned char obsthresh, const char* sMotPrimFile);
 
         virtual int SetGoal(double x_m, double y_m, double theta_rad);
         virtual int SetStart(double x_m, double y_m, double theta_rad);
@@ -140,8 +139,14 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
 
         int count;
         int past;
+
     protected:
         virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
+
+        // disallow these to be called, won't work correctly any more
+        virtual bool InitializeEnv(const char* sEnvFile, const std::vector<sbpl_2Dpt_t>& perimeterptsV,
+                const char* sMotPrimFile);
+        virtual bool InitializeEnv(const char* sEnvFile);
 
     protected:
         struct FullBodyCollisionInfo
