@@ -24,7 +24,7 @@ struct ScopeExit
 
 EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle & nhPriv,
         double costmapOffsetX, double costmapOffsetY) :
-    costmapOffsetX(costmapOffsetX), costmapOffsetY(costmapOffsetY)
+    worldOriginX(costmapOffsetX), worldOriginY(costmapOffsetY)
 {
     nhPriv.param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
     scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
@@ -40,6 +40,7 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
                 freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapMaxCost);
     }
 
+    // TODO move to init env
     update_planning_scene();
 
     planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
@@ -64,16 +65,22 @@ EnvironmentNavXYThetaLatMoveit::~EnvironmentNavXYThetaLatMoveit()
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatMoveit::SetGoal(double x_m, double y_m, double theta_rad)
 {
+    // first convert world coordinates to internal grid coordinates
+    int x, y, theta;
+    if(!poseWorldToGrid(x_m, y_m, theta_rad, x, y, theta)) {
+        SBPL_ERROR("ERROR: goal state %d %d %d not in grid\n", x, y, theta);
+        return -1;
+    }
+    // next convert the world coordinates to internal env coordinates to be used by parent
+    poseWorldToEnv(x_m, y_m, theta_rad, x_m, y_m, theta_rad);
+
     if(EnvironmentNAVXYTHETALAT::SetGoal(x_m, y_m, theta_rad) == -1)
         return -1;
 
-    int x = CONTXY2DISC(x_m, EnvNAVXYTHETALATCfg.cellsize_m);
-    int y = CONTXY2DISC(y_m, EnvNAVXYTHETALATCfg.cellsize_m);
-    int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
     EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
     ROS_ASSERT(OutHashEntry != NULL);   // should have been created by parent
     if(in_full_body_collision(OutHashEntry)) {
-        SBPL_ERROR("ERROR: goal state in collision\n", x, y);
+        SBPL_ERROR("ERROR: goal state %d, %d in collision\n", x, y);
         EnvNAVXYTHETALAT.goalstateid = -1;
         return -1;
     }
@@ -84,12 +91,18 @@ int EnvironmentNavXYThetaLatMoveit::SetGoal(double x_m, double y_m, double theta
 //returns the stateid if success, and -1 otherwise
 int EnvironmentNavXYThetaLatMoveit::SetStart(double x_m, double y_m, double theta_rad)
 {
+    // first convert world coordinates to internal grid coordinates
+    int x, y, theta;
+    if(!poseWorldToGrid(x_m, y_m, theta_rad, x, y, theta)) {
+        SBPL_ERROR("ERROR: start state %d %d %d not in grid\n", x, y, theta);
+        return -1;
+    }
+    // next convert the world coordinates to internal env coordinates to be used by parent
+    poseWorldToEnv(x_m, y_m, theta_rad, x_m, y_m, theta_rad);
+
     if(EnvironmentNAVXYTHETALAT::SetStart(x_m, y_m, theta_rad) == -1)
         return -1;
 
-    int x = CONTXY2DISC(x_m, EnvNAVXYTHETALATCfg.cellsize_m);
-    int y = CONTXY2DISC(y_m, EnvNAVXYTHETALATCfg.cellsize_m);
-    int theta = ContTheta2Disc(theta_rad, EnvNAVXYTHETALATCfg.NumThetaDirs);
     EnvNAVXYTHETALATHashEntry_t* OutHashEntry = (this->*GetHashEntry)(x, y, theta);
     ROS_ASSERT(OutHashEntry != NULL);
     if (in_full_body_collision(OutHashEntry)) {
@@ -187,11 +200,9 @@ void EnvironmentNavXYThetaLatMoveit::publish_planning_scene()
     planning_scene_publisher.publish(msg);
 }
 
-
 void EnvironmentNavXYThetaLatMoveit::clear_full_body_collision_infos()
 {
-    for (size_t i = 0; i < full_body_collision_infos.size(); i++)
-    {
+    for(size_t i = 0; i < full_body_collision_infos.size(); i++) {
         full_body_collision_infos[i].initialized = false;
     }
 }
@@ -201,53 +212,114 @@ void EnvironmentNavXYThetaLatMoveit::publish_expanded_states()
 {
     geometry_msgs::PoseArray msg;
     msg.header.frame_id = getPlanningScene()->getPlanningFrame();
-    for (size_t id = 0; id < full_body_collision_infos.size(); id++)
-    {
-        if (full_body_collision_infos[id].initialized && ! full_body_collision_infos[id].collision)
-        {
-            EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
-            sbpl_xy_theta_pt_t coords = discreteToContinuous(state->X, state->Y, state->Theta);
-            msg.poses.push_back(geometry_msgs::Pose());
-            geometry_msgs::Pose& pose = msg.poses.back();
-            pose.position.x = coords.x + costmapOffsetX;
-            pose.position.y = coords.y + costmapOffsetY;
-            pose.position.z = 0;
-            pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
+    for(size_t id = 0; id < full_body_collision_infos.size(); id++) {
+        if(full_body_collision_infos[id].initialized && ! full_body_collision_infos[id].collision) {
+            msg.poses.push_back(poseFromStateID(id));
         }
     }
     pose_array_publisher.publish(msg);
 }
 
-// TODO others + cleanup iface + internally only use these
-bool EnvironmentNavXYThetaLatMoveit::gridToWorld(int X, int Y, int Theta, double & x, double & y, double & theta) const
-{
-    sbpl_xy_theta_pt_t pt = discreteToContinuous(X, Y, Theta);
-    x = pt.x + costmapOffsetX;
-    y = pt.y + costmapOffsetY;
-    theta = pt.theta;
 
-    return true;    // TODO check in map
+bool EnvironmentNavXYThetaLatMoveit::poseWorldToEnv(double wx, double wy, double wth,
+        double & ex, double & ey, double & eth) const
+{
+    ex = wx - worldOriginX;
+    ey = wy - worldOriginY;
+    eth = wth;
+    return true;
+}
+
+bool EnvironmentNavXYThetaLatMoveit::poseWorldToGrid(double wx, double wy, double wth, int & gx, int & gy, int & gth) const
+{
+    double ex, ey, eth;
+    bool ret = true;
+    ret &= poseWorldToEnv(wx, wy, wth, ex, ey, eth);
+    ret &= PoseContToDisc(ex, ey, eth, gx, gy, gth);
+    return ret;
+}
+
+bool EnvironmentNavXYThetaLatMoveit::posCostmapToGrid(int cx, int cy, int & gx, int & gy) const
+{
+    gx = cx;
+    gy = cy;
+
+    // check the grid matches, we don't care about the costmap
+    return (gx >= 0) && (gx < EnvNAVXYTHETALATCfg.EnvWidth_c) 
+        && (gy >= 0) && (gy < EnvNAVXYTHETALATCfg.EnvHeight_c);
+}
+
+bool EnvironmentNavXYThetaLatMoveit::poseEnvToWorld(double ex, double ey, double eth,
+        double & wx, double & wy, double & wth) const
+{
+    wx = ex + worldOriginX;
+    wy = ey + worldOriginY;
+    wth = eth;
+    return true;
+}
+
+bool EnvironmentNavXYThetaLatMoveit::poseGridToWorld(int gx, int gy, int gth,
+        double & wx, double & wy, double & wth) const
+{
+    double ex, ey, eth;
+    bool ret = true;
+    ret &= PoseDiscToCont(gx, gy, gth, ex, ey, eth);
+    ret &= poseEnvToWorld(ex, ey, eth, wx, wy, wth);
+    return ret;
+}
+
+bool EnvironmentNavXYThetaLatMoveit::posGridToCostmap(int gx, int gy, int & cx, int & cy) const
+{
+    cx = gx;
+    cy = gy;
+
+    // check the grid matches, we don't care about the costmap
+    return (gx >= 0) && (gx < EnvNAVXYTHETALATCfg.EnvWidth_c) 
+        && (gy >= 0) && (gy < EnvNAVXYTHETALATCfg.EnvHeight_c);
 }
 
 geometry_msgs::Pose EnvironmentNavXYThetaLatMoveit::poseFromStateID(int stateID) const
 {
-    EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[stateID];
+    int ix, iy, ith;
+    GetCoordFromState(stateID, ix, iy, ith);
+
     geometry_msgs::Pose pose;
     pose.position.z = 0;
     double theta;
-    gridToWorld(state->X, state->Y, state->Theta, pose.position.x, pose.position.y, theta);
+    poseGridToWorld(ix, iy, ith, pose.position.x, pose.position.y, theta);
+
     pose.orientation = tf::createQuaternionMsgFromYaw(theta);
     return pose;
 }
 
-sbpl_xy_theta_pt_t EnvironmentNavXYThetaLatMoveit::discreteToContinuous(int x, int y, int theta) const
+bool EnvironmentNavXYThetaLatMoveit::UpdateCostFromCostmap(int cx, int cy, unsigned char newcost)
 {
-    sbpl_xy_theta_pt_t pose;
-    pose.x = DISCXY2CONT(x, EnvNAVXYTHETALATCfg.cellsize_m);
-    pose.y = DISCXY2CONT(y, EnvNAVXYTHETALATCfg.cellsize_m);
-    pose.theta = DiscTheta2Cont(theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
-    return pose;
+    int gx, gy;
+    bool ret = posCostmapToGrid(cx, cy, gx, gy);
+    if(!ret)
+        return false;
+    return UpdateCost(gx, gy, newcost);
 }
+
+unsigned char EnvironmentNavXYThetaLatMoveit::GetMapCostForCostmap(int cx, int cy)
+{
+    int gx, gy;
+    bool ret = posCostmapToGrid(cx, cy, gx, gy);
+    if(!ret)
+        return EnvNAVXYTHETALATCfg.obsthresh;
+    return GetMapCost(gx, gy);
+}
+
+void EnvironmentNavXYThetaLatMoveit::ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath,
+        std::vector<sbpl_xy_theta_pt_t>* xythetaPath)
+{
+    // parent env doesn't know anything about world vs. env, convert the result here
+    EnvironmentNAVXYTHETALAT::ConvertStateIDPathintoXYThetaPath(stateIDPath, xythetaPath);
+    forEach(sbpl_xy_theta_pt_t & pt, *xythetaPath) {
+        poseEnvToWorld(pt.x, pt.y, pt.theta, pt.x, pt.y, pt.theta);
+    }
+}
+
 
 bool EnvironmentNavXYThetaLatMoveit::in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state)
 {
@@ -262,19 +334,20 @@ const EnvironmentNavXYThetaLatMoveit::FullBodyCollisionInfo& EnvironmentNavXYThe
     if (! full_body_collision_infos[state->stateID].initialized)
     {
         time3dCheck->start();
-        sbpl_xy_theta_pt_t pose = discreteToContinuous(state->X, state->Y, state->Theta);
         // Static uses this to get an initialized state from the scene
         // that we can subsequently change
         static robot_state::RobotState robot_state = scene->getCurrentState();
-        robot_state.setVariablePosition("world_joint/x", pose.x + costmapOffsetX);
-        robot_state.setVariablePosition("world_joint/y", pose.y + costmapOffsetY);
-        robot_state.setVariablePosition("world_joint/theta", pose.theta);
+        double x, y, theta;
+        poseGridToWorld(state->X, state->Y, state->Theta, x, y, theta);
+        robot_state.setVariablePosition("world_joint/x", x);
+        robot_state.setVariablePosition("world_joint/y", y);
+        robot_state.setVariablePosition("world_joint/theta", theta);
         robot_state.update();
         full_body_collision_infos[state->stateID].initialized = true;
         full_body_collision_infos[state->stateID].collision = getPlanningScene()->isStateColliding(robot_state);
         //ROS_INFO("get_full_body_collision_info for (%.2f, %.2f, %.2f) = %d",
-        //        pose.x + costmapOffsetX, pose.y + costmapOffsetY,
-        //        pose.theta, full_body_collision_infos[state->stateID].collision);
+        //        x, y, theta,
+        //        full_body_collision_infos[state->stateID].collision);
         time3dCheck->end();
     }
     return full_body_collision_infos[state->stateID];
@@ -287,15 +360,17 @@ int EnvironmentNavXYThetaLatMoveit::GetFromToHeuristic(int FromStateID, int ToSt
 
     int heur = EnvironmentNAVXYTHETALAT::GetFromToHeuristic(FromStateID, ToStateID);
 
-    EnvNAVXYTHETALATHashEntry_t* FromHashEntry = StateID2CoordTable[FromStateID];
-    EnvNAVXYTHETALATHashEntry_t* ToHashEntry = StateID2CoordTable[ToStateID];
+    int fromX, fromY, fromTheta;
+    int toX, toY, toTheta;
+    GetCoordFromState(FromStateID, fromX, fromY, fromTheta);
+    GetCoordFromState(ToStateID, toX, toY, toTheta);
 
-    int dx = ToHashEntry->X - FromHashEntry->X;
-    int dy = ToHashEntry->Y - FromHashEntry->Y;
+    int dx = toX - fromX;
+    int dy = toY - fromY;
 
     int hfs = 0;
     if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
-        hfs = freespace_heuristic_costmap->getCost(dx, dy, FromHashEntry->Theta, ToHashEntry->Theta);
+        hfs = freespace_heuristic_costmap->getCost(dx, dy, fromTheta, toTheta);
 
     count++;
     if(count % 1000 == 0) {
@@ -316,12 +391,13 @@ int EnvironmentNavXYThetaLatMoveit::GetStartHeuristic(int stateID)
 
     int heur = EnvironmentNAVXYTHETALAT::GetStartHeuristic(stateID);
 
-    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
-    int dx = EnvNAVXYTHETALATCfg.StartX_c - HashEntry->X;
-    int dy = EnvNAVXYTHETALATCfg.StartY_c - HashEntry->Y;
+    int x, y, theta;
+    GetCoordFromState(stateID, x, y, theta);
+    int dx = EnvNAVXYTHETALATCfg.StartX_c - x;
+    int dy = EnvNAVXYTHETALATCfg.StartY_c - y;
     dx = -dx;   // FIXME this is supposed to be FROM start TO stateID, not vice versa
     dy = -dy;
-    int endTh = HashEntry->Theta;
+    int endTh = theta;
 
     int hfs = 0;
     if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
@@ -355,18 +431,19 @@ int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
     }
 #endif
 
-    EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
+    int x, y, theta;
+    GetCoordFromState(stateID, x, y, theta);
     //computes distances from start state that is grid2D, so it is EndX_c EndY_c
-    int h2D = grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(HashEntry->X, HashEntry->Y); 
-    int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM * EuclideanDistance_m(HashEntry->X, HashEntry->Y,
+    int h2D = grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(x, y);
+    int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM * EuclideanDistance_m(x, y,
                 EnvNAVXYTHETALATCfg.EndX_c,
                 EnvNAVXYTHETALATCfg.EndY_c));
     //define this function if it is used in the planner (heuristic backward search would use it)
     int heur = (int)(((double)__max(h2D, hEuclid)) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs);
 
-    int dx = EnvNAVXYTHETALATCfg.EndX_c - HashEntry->X;
-    int dy = EnvNAVXYTHETALATCfg.EndY_c - HashEntry->Y;
-    int startTh = HashEntry->Theta;
+    int dx = EnvNAVXYTHETALATCfg.EndX_c - x;
+    int dy = EnvNAVXYTHETALATCfg.EndY_c - y;
+    int startTh = theta;
 
     int hfs = 0;
     if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
@@ -405,7 +482,7 @@ void EnvironmentNavXYThetaLatMoveit::printTimingStats()
 moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatMoveit::pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const
 {
     moveit_msgs::DisplayTrajectory dtraj;
-    dtraj.model_id = "pr2";    // FIXME this is just for matching?
+    dtraj.model_id = "pr2";
     if(path.empty())
         return dtraj;
 
