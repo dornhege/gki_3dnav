@@ -28,13 +28,12 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    while(pubPoses.getNumSubscribers() < 0) {
+    while(pubPoses.getNumSubscribers() <= 0) {
         ros::spinOnce();
         ros::Duration(0.1).sleep();
     }
 
     pubPoses.publish(srv.response.poses);
-
     ros::Duration(1.0).sleep();
 }
 

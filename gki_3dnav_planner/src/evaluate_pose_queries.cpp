@@ -111,7 +111,6 @@ int main(int argc, char** argv)
 
   ros::Rate rate(10.0);
   while(ros::ok() && poseQueries.empty()) {
-    std::cout << "ok" << std::endl;
     ros::spinOnce();
     rate.sleep();
   }
