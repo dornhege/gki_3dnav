@@ -115,144 +115,143 @@ GKI3dNavPlanner::GKI3dNavPlanner(std::string name, costmap_2d::Costmap2DROS* cos
 
 void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros)
 {
-    if (!initialized_)
-    {
-        private_nh_ = new ros::NodeHandle("~/" + name);
-        ros::NodeHandle nh(name);
+    if(initialized_)
+        return;
 
-        ROS_INFO("Name is %s", name.c_str());
+    private_nh_ = new ros::NodeHandle("~/" + name);
+    ros::NodeHandle nh(name);
 
-        private_nh_->param("planner_type", planner_type_, string("ARAPlanner"));
-        private_nh_->param("allocated_time", allocated_time_, 10.0);
-        private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
-        private_nh_->param("forward_search", forward_search_, bool(false));
-        private_nh_->param("primitive_filename", primitive_filename_, string(""));
-        private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
-        private_nh_->param("use_freespace_heuristic", use_freespace_heuristic_, true);
+    ROS_INFO("Name is %s", name.c_str());
 
-        double nominalvel_mpersecs, timetoturn45degsinplace_secs;
-        private_nh_->param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
-        private_nh_->param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
-        bool track_expansions;
-        private_nh_->param("track_expansions", track_expansions, false);
+    private_nh_->param("planner_type", planner_type_, string("ARAPlanner"));
+    private_nh_->param("allocated_time", allocated_time_, 10.0);
+    private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
+    private_nh_->param("forward_search", forward_search_, bool(false));
+    private_nh_->param("primitive_filename", primitive_filename_, string(""));
+    private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
+    private_nh_->param("use_freespace_heuristic", use_freespace_heuristic_, true);
 
-        int lethal_obstacle;
-        private_nh_->param("lethal_obstacle", lethal_obstacle, 20);
-        lethal_obstacle_ = (unsigned char) lethal_obstacle;
-        inscribed_inflated_obstacle_ = lethal_obstacle_ - 1;
-        sbpl_cost_multiplier_ = (unsigned char) (costmap_2d::INSCRIBED_INFLATED_OBSTACLE / inscribed_inflated_obstacle_ + 1);
-        ROS_DEBUG("SBPL: lethal: %uz, inscribed inflated: %uz, multiplier: %uz", lethal_obstacle, inscribed_inflated_obstacle_, sbpl_cost_multiplier_);
+    double nominalvel_mpersecs, timetoturn45degsinplace_secs;
+    private_nh_->param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
+    private_nh_->param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
+    bool track_expansions;
+    private_nh_->param("track_expansions", track_expansions, false);
 
-        costmap_ros_ = costmap_ros;
+    int lethal_obstacle;
+    private_nh_->param("lethal_obstacle", lethal_obstacle, 20);
 
-        std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
+    costmap_ros_ = costmap_ros;
 
-        env_ = new EnvironmentNavXYThetaLatMoveit(*private_nh_, costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
+    // determine cost thresholds and scaling for SBPL costs
+    lethal_obstacle_ = (unsigned char) lethal_obstacle;
+    inscribed_inflated_obstacle_ = lethal_obstacle_ - 1;
+    sbpl_cost_multiplier_ = (unsigned char) (costmap_2d::INSCRIBED_INFLATED_OBSTACLE / inscribed_inflated_obstacle_ + 1);
+    ROS_DEBUG("SBPL: lethal: %uz, inscribed inflated: %uz, multiplier: %uz", lethal_obstacle, inscribed_inflated_obstacle_, sbpl_cost_multiplier_);
 
-        std::string costmapFrameId = costmap_ros_->getGlobalFrameID();
-        if(!costmapFrameId.empty() && !(costmapFrameId[0] == '/')) {
-            costmapFrameId = "/" + costmapFrameId;
-        }
-        if(costmapFrameId != getPlanningFrame()) {
-            ROS_ERROR("Costmap is not in the planning frame (%s), but in frame %s and will not be converted! This is unlikely to produce correct results. Make sure the costmap frame and MoveIt planning frame are the same.",
-                    getPlanningFrame().c_str(), costmap_ros_->getGlobalFrameID().c_str());
-        }
+    // check if the costmap has an inflation layer
+    // Warning: footprint updates after initialization are not supported here
+    unsigned char cost_possibly_circumscribed_tresh = 0;
+    for (std::vector<boost::shared_ptr<costmap_2d::Layer> >::const_iterator layer
+            = costmap_ros_->getLayeredCostmap()->getPlugins()->begin();
+            layer != costmap_ros_->getLayeredCostmap()->getPlugins()->end(); ++layer) {
+        boost::shared_ptr<costmap_2d::InflationLayer> inflation_layer
+            = boost::dynamic_pointer_cast<costmap_2d::InflationLayer>(*layer);
+        if(!inflation_layer)
+            continue;
 
-        // check if the costmap has an inflation layer
-        // Warning: footprint updates after initialization are not supported here
-        unsigned char cost_possibly_circumscribed_tresh = 0;
-        for (std::vector<boost::shared_ptr<costmap_2d::Layer> >::const_iterator layer = costmap_ros_->getLayeredCostmap()->getPlugins()->begin(); layer != costmap_ros_->getLayeredCostmap()->getPlugins()->end(); ++layer)
-        {
-            boost::shared_ptr<costmap_2d::InflationLayer> inflation_layer = boost::dynamic_pointer_cast<costmap_2d::InflationLayer>(*layer);
-            if (!inflation_layer)
-                continue;
-
-            cost_possibly_circumscribed_tresh = inflation_layer->computeCost(costmap_ros_->getLayeredCostmap()->getCircumscribedRadius()/costmap_ros_->getCostmap()->getResolution());
-            ROS_INFO("Radii: inscribed: %f circumscribed: %f", costmap_ros_->getLayeredCostmap()->getInscribedRadius(), costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());
-        }
-
-        if (!env_->SetEnvParameter("cost_inscribed_thresh", costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE)))
-        {
-            ROS_ERROR("Failed to set cost_inscribed_thresh parameter");
-            exit(1);
-        }
-        if (!env_->SetEnvParameter("cost_possibly_circumscribed_thresh", costMapCostToSBPLCost(cost_possibly_circumscribed_tresh)))
-        {
-            ROS_ERROR("Failed to set cost_possibly_circumscribed_thresh parameter");
-            exit(1);
-        }
-        int obst_cost_thresh = costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE);
-        vector<sbpl_2Dpt_t> perimeterptsV;
-        perimeterptsV.reserve(footprint.size());
-        for (size_t ii(0); ii < footprint.size(); ++ii)
-        {
-            sbpl_2Dpt_t pt;
-            pt.x = footprint[ii].x;
-            pt.y = footprint[ii].y;
-            perimeterptsV.push_back(pt);
-        }
-
-        bool ret;
-        try
-        {
-            ret = env_->InitializeEnv(costmap_ros_->getCostmap()->getSizeInCellsX(), // width
-                    costmap_ros_->getCostmap()->getSizeInCellsY(), // height
-                    NULL, // mapdata
-                    // start/goal (x, y, theta)
-                    // we really don't care at this point as this depends on the query,
-                    // use costmap origin, so that the coords are in the map.
-                    costmap_ros_->getCostmap()->getOriginX() + costmap_ros_->getCostmap()->getResolution(),
-                    costmap_ros_->getCostmap()->getOriginY() + costmap_ros_->getCostmap()->getResolution(), 0.0,
-                    costmap_ros_->getCostmap()->getOriginX() + costmap_ros_->getCostmap()->getResolution(),
-                    costmap_ros_->getCostmap()->getOriginY() + costmap_ros_->getCostmap()->getResolution(), 0.0,
-                    0, 0, 0, //goal tolerance
-                    perimeterptsV, costmap_ros_->getCostmap()->getResolution(),
-                    nominalvel_mpersecs, timetoturn45degsinplace_secs,
-                    obst_cost_thresh, primitive_filename_.c_str());
-        } catch (SBPL_Exception& e)
-        {
-            ROS_ERROR("SBPL encountered a fatal exception!");
-            ret = false;
-        }
-        if (!ret)
-        {
-            ROS_ERROR("SBPL initialization failed!");
-            exit(1);
-        }
-        for (ssize_t ix(0); ix < costmap_ros_->getCostmap()->getSizeInCellsX(); ++ix)
-            for (ssize_t iy(0); iy < costmap_ros_->getCostmap()->getSizeInCellsY(); ++iy)
-                env_->UpdateCostFromCostmap(ix, iy, costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy)));
-
-        if ("ARAPlanner" == planner_type_)
-        {
-            ROS_INFO("Planning with ARA*");
-            planner_ = new ARAPlanner(env_, forward_search_);
-            dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
-        }
-        else if ("ADPlanner" == planner_type_)
-        {
-            ROS_INFO("Planning with AD*");
-            planner_ = new ADPlanner(env_, forward_search_);
-        }
-        else
-        {
-            ROS_ERROR("ARAPlanner and ADPlanner are currently the only supported planners!\n");
-            exit(1);
-        }
-
-        ROS_INFO("[gki_3dnav_planner] Initialized successfully");
-        plan_pub_ = private_nh_->advertise<nav_msgs::Path>("plan", 1);
-        stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
-        traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
-        expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
-
-        srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
-                &GKI3dNavPlanner::sampleValidPoses, this);
-
-        srand48(time(NULL));
-
-        initialized_ = true;
+        cost_possibly_circumscribed_tresh = inflation_layer->computeCost(
+                costmap_ros_->getLayeredCostmap()->getCircumscribedRadius() / 
+                costmap_ros_->getCostmap()->getResolution());
+        ROS_INFO("Radii: inscribed: %f circumscribed: %f",
+                costmap_ros_->getLayeredCostmap()->getInscribedRadius(),
+                costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());
     }
+
+    // Environment creation and initialization
+    env_ = new EnvironmentNavXYThetaLatMoveit(*private_nh_, costmap_ros_->getCostmap()->getOriginX(), costmap_ros_->getCostmap()->getOriginY());
+    if(!env_->SetEnvParameter("cost_inscribed_thresh",
+                costMapCostToSBPLCost(costmap_2d::INSCRIBED_INFLATED_OBSTACLE))) {
+        ROS_ERROR("Failed to set cost_inscribed_thresh parameter");
+        exit(1);
+    }
+    if(!env_->SetEnvParameter("cost_possibly_circumscribed_thresh",
+                costMapCostToSBPLCost(cost_possibly_circumscribed_tresh))) {
+        ROS_ERROR("Failed to set cost_possibly_circumscribed_thresh parameter");
+        exit(1);
+    }
+    int obst_cost_thresh = costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE);
+    vector<sbpl_2Dpt_t> perimeterptsV;
+    std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
+    perimeterptsV.reserve(footprint.size());
+    for(size_t ii(0); ii < footprint.size(); ++ii) {
+        sbpl_2Dpt_t pt;
+        pt.x = footprint[ii].x;
+        pt.y = footprint[ii].y;
+        perimeterptsV.push_back(pt);
+    }
+
+    bool ret;
+    try {
+        ret = env_->InitializeEnv(costmap_ros_->getCostmap()->getSizeInCellsX(), // width
+                costmap_ros_->getCostmap()->getSizeInCellsY(), // height
+                NULL, // mapdata
+                // start/goal (x, y, theta)
+                // we really don't care at this point as this depends on the query,
+                // use costmap origin, so that the coords are in the map.
+                costmap_ros_->getCostmap()->getOriginX() + costmap_ros_->getCostmap()->getResolution(),
+                costmap_ros_->getCostmap()->getOriginY() + costmap_ros_->getCostmap()->getResolution(), 0.0,
+                costmap_ros_->getCostmap()->getOriginX() + costmap_ros_->getCostmap()->getResolution(),
+                costmap_ros_->getCostmap()->getOriginY() + costmap_ros_->getCostmap()->getResolution(), 0.0,
+                0, 0, 0, //goal tolerance
+                perimeterptsV, costmap_ros_->getCostmap()->getResolution(),
+                nominalvel_mpersecs, timetoturn45degsinplace_secs,
+                obst_cost_thresh, primitive_filename_.c_str());
+    } catch(SBPL_Exception& e) {
+        ROS_ERROR("SBPL encountered a fatal exception!");
+        ret = false;
+    }
+    if(!ret) {
+        ROS_ERROR("SBPL initialization failed!");
+        exit(1);
+    }
+    for (ssize_t ix(0); ix < costmap_ros_->getCostmap()->getSizeInCellsX(); ++ix)
+        for (ssize_t iy(0); iy < costmap_ros_->getCostmap()->getSizeInCellsY(); ++iy)
+            env_->UpdateCostFromCostmap(ix, iy, costMapCostToSBPLCost(costmap_ros_->getCostmap()->getCost(ix, iy)));
+
+    // costmap frame must be environment's planning frame
+    std::string costmapFrameId = costmap_ros_->getGlobalFrameID();
+    if(!costmapFrameId.empty() && !(costmapFrameId[0] == '/')) {
+        costmapFrameId = "/" + costmapFrameId;
+    }
+    if(costmapFrameId != getPlanningFrame()) {
+        ROS_ERROR("Costmap is not in the planning frame (%s), but in frame %s and will not be converted! This is unlikely to produce correct results. Make sure the costmap frame and MoveIt planning frame are the same.",
+                getPlanningFrame().c_str(), costmap_ros_->getGlobalFrameID().c_str());
+    }
+
+    // Search planner creation
+    if ("ARAPlanner" == planner_type_) {
+        ROS_INFO("Planning with ARA*");
+        planner_ = new ARAPlanner(env_, forward_search_);
+        dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
+    } else if ("ADPlanner" == planner_type_) {
+        ROS_INFO("Planning with AD*");
+        planner_ = new ADPlanner(env_, forward_search_);
+    } else {
+        ROS_ERROR("ARAPlanner and ADPlanner are currently the only supported planners!\n");
+        exit(1);
+    }
+
+    ROS_INFO("[gki_3dnav_planner] Initialized successfully");
+    plan_pub_ = private_nh_->advertise<nav_msgs::Path>("plan", 1);
+    stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
+    traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
+    expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
+
+    srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
+            &GKI3dNavPlanner::sampleValidPoses, this);
+
+    srand48(time(NULL));
+    initialized_ = true;
 }
 
 std::string GKI3dNavPlanner::getPlanningFrame() const
