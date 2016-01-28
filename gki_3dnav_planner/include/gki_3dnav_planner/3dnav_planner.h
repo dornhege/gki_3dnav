@@ -69,6 +69,13 @@ public:
         delete private_nh_;
     }
 
+    /// Returns the frame that all planning is happening in.
+    /**
+     * This is usually the planning frame of the MoveIt planning scene. All data has to be either in this
+     * frame or has to be transformed to this.
+     */
+    std::string getPlanningFrame() const;
+
 protected:
     bool sampleValidPoses(gki_3dnav_planner::SampleValidPoses::Request & req, gki_3dnav_planner::SampleValidPoses::Response & resp);
 
@@ -91,9 +98,6 @@ private:
 
     double allocated_time_; /**< amount of time allowed for search */
     double initial_epsilon_; /**< initial epsilon for beginning the anytime search */
-
-    std::string environment_type_; /** what type of environment in which to plan.  choices are 2D and XYThetaLattice. */
-    std::string cost_map_topic_; /** what topic is being used for the costmap topic */
 
     bool forward_search_; /** whether to use forward or backward search */
     std::string primitive_filename_; /** where to find the motion primitives for the current robot */
