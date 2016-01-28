@@ -73,6 +73,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   virtual int GetStartHeuristic(int stateID);
   // get euclidean distance to goal in m
   virtual int GetGoalHeuristic(int stateID);
+  int getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end);
 
   // not doing anything right now
   void EnsureHeuristicsUpdated(bool bGoalHeuristics);

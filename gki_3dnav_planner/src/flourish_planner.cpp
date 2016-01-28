@@ -548,6 +548,7 @@ namespace flourish_planner{
 	ROS_DEBUG("Solution is found\n");
       else{
 	ROS_INFO("Solution not found\n");
+	publish_expansions();
 	publishStats(solution_cost, 0, start, goal);
 	return false;
       }
@@ -569,6 +570,8 @@ namespace flourish_planner{
     if (sbpl_path.size() == 0){
       EnvNAVXYTHETALAT3Dpt_t s(start.pose.position.x, start.pose.position.y, theta_start);
       sbpl_path.push_back(s);
+      //EnvNAVXYTHETALAT3Dpt_t s2(goal.pose.position.x, goal.pose.position.y, theta_goal);
+      //sbpl_path.push_back(s2);
     }
 
     ROS_DEBUG("Plan has %d points.\n", (int )sbpl_path.size());

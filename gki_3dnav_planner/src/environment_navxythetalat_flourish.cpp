@@ -109,7 +109,7 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   if(freespace_heuristic_costmap_file.empty()) {
     freespace_heuristic_costmap = NULL;
   } else {
-    freespace_heuristic_costmap = new freespace_mechanism_heuristic::HeuristicCostMap(freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapMaxCost);
+    freespace_heuristic_costmap = new freespace_mechanism_heuristic::HeuristicCostMap(freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapInfiniteCost);
   }
   //update_planning_scene();
 
@@ -753,15 +753,12 @@ int EnvironmentNavXYThetaLatFlourish::GetStartHeuristic(int stateID)
   //return (int)(((double)__max(h2D,hEuclid))/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
   int heur = (int)(((double)hEuclid)/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
 
-  int hfs = 0;
-  if(useFreespaceHeuristic_ && freespace_heuristic_costmap){
-    int dx = EnvNAVXYTHETALATCfg.StartX_c - HashEntry->X;
-    int dy = EnvNAVXYTHETALATCfg.StartY_c - HashEntry->Y;
-    dx = -dx;   // FIXME this is supposed to be FROM start TO stateID, not vice versa
-    dy = -dy;
-    int endTh = HashEntry->Theta;
-    hfs = freespace_heuristic_costmap->getCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
-  }
+  int dx = EnvNAVXYTHETALATCfg.StartX_c - HashEntry->X;
+  int dy = EnvNAVXYTHETALATCfg.StartY_c - HashEntry->Y;
+  dx = -dx;   // FIXME this is supposed to be FROM start TO stateID, not vice versa
+  dy = -dy;
+  int endTh = HashEntry->Theta;
+  int hfs = getFreespaceCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
 
   count++;
   if(count % 1000 == 0) {
@@ -783,15 +780,13 @@ int EnvironmentNavXYThetaLatFlourish::GetFromToHeuristic(int FromStateID, int To
   int heur = EnvironmentNAVXYTHETALAT::GetFromToHeuristic(FromStateID, ToStateID);
 
   int hfs = 0;
-  if(useFreespaceHeuristic_ && freespace_heuristic_costmap){
-    EnvNAVXYTHETALATHashEntry_t* FromHashEntry = StateID2CoordTable[FromStateID];
-    EnvNAVXYTHETALATHashEntry_t* ToHashEntry = StateID2CoordTable[ToStateID];
+  EnvNAVXYTHETALATHashEntry_t* FromHashEntry = StateID2CoordTable[FromStateID];
+  EnvNAVXYTHETALATHashEntry_t* ToHashEntry = StateID2CoordTable[ToStateID];
 
-    int dx = ToHashEntry->X - FromHashEntry->X;
-    int dy = ToHashEntry->Y - FromHashEntry->Y;
+  int dx = ToHashEntry->X - FromHashEntry->X;
+  int dy = ToHashEntry->Y - FromHashEntry->Y;
 
-    hfs = freespace_heuristic_costmap->getCost(dx, dy, FromHashEntry->Theta, ToHashEntry->Theta);
-  }
+  hfs = getFreespaceCost(dx, dy, FromHashEntry->Theta, ToHashEntry->Theta);
 
   count++;
   if(count % 1000 == 0) {
@@ -832,13 +827,11 @@ int EnvironmentNavXYThetaLatFlourish::GetGoalHeuristic(int stateID)
   //int heur = (int)(((double)__max(h2D, hEuclid)) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs);
   int heur = (int)(((double)hEuclid) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs);
 
-  int hfs = 0;
-  if(useFreespaceHeuristic_ && freespace_heuristic_costmap){
-    int dx = EnvNAVXYTHETALATCfg.EndX_c - HashEntry->X;
-    int dy = EnvNAVXYTHETALATCfg.EndY_c - HashEntry->Y;
-    int startTh = HashEntry->Theta;
-    hfs = freespace_heuristic_costmap->getCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
-  }
+  int dx = EnvNAVXYTHETALATCfg.EndX_c - HashEntry->X;
+  int dy = EnvNAVXYTHETALATCfg.EndY_c - HashEntry->Y;
+  int startTh = HashEntry->Theta;
+  //std::cout << "getting freespace cost of coordinates " << dx << ", " << dy << std::endl;
+  int hfs = getFreespaceCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
 
   count++;
   if(count % 1000 == 0) {
@@ -851,6 +844,42 @@ int EnvironmentNavXYThetaLatFlourish::GetGoalHeuristic(int stateID)
   }
   past++;
   return heur;
+}
+
+int EnvironmentNavXYThetaLatFlourish::getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end){
+  int hfs = 0;
+  if(useFreespaceHeuristic_ && freespace_heuristic_costmap){
+    hfs = freespace_heuristic_costmap->getCost(deltaX, deltaY, theta_start, theta_end);
+    //std::cout << "got first cost " << hfs << std::endl;
+    if(hfs == INFINITECOST){
+      // figure out cell in freespace_heuristic_costmap in the direction of deltaX, deltaY
+      int maxdx = freespace_heuristic_costmap->getWidth()/2-2;
+      int maxdy = freespace_heuristic_costmap->getHeight()/2-2;
+      // y coordinate corresponding to maxdx in direction of deltaX, deltaY, and vice versa
+      int yForMaxdx = deltaX==0? maxdy : (maxdx*deltaY)/abs(deltaX);
+      int xForMaxdy = deltaY==0? maxdx : (maxdy*deltaX)/abs(deltaY);
+      int deltaXInMap = deltaX >= 0? maxdx : -maxdx;
+      int deltaYInMap = yForMaxdx;
+      //std::cout << "step 1: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
+      if(abs(deltaYInMap) > maxdy){
+	deltaXInMap = xForMaxdy;
+	deltaYInMap = deltaY >= 0? maxdy : -maxdy;
+	ROS_ASSERT(abs(xForMaxdy) <= maxdx);
+      }
+      //std::cout << "step 2: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
+      int hdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, 0)
+	+ getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, 0, theta_end);
+      for(size_t i = 1; i < EnvNAVXYTHETALATCfg.NumThetaDirs; ++i){
+	int hnewdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, i)
+	+ getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, i, theta_end);
+	if(hnewdelta < hdelta){
+	  hdelta = hnewdelta;
+	}
+      }
+      hfs = hdelta;
+    }
+  }
+  return hfs;
 }
 
 
