@@ -520,6 +520,7 @@ bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs:
         else
         {
             ROS_INFO("Solution not found\n");
+            publish_expansions();
             publishStats(solution_cost, 0, start, goal);
             return false;
         }
