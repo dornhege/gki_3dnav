@@ -131,6 +131,7 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
         virtual int GetStartHeuristic(int stateID);
         virtual int GetGoalHeuristic(int stateID);
+        int getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end);
 
         moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
 

@@ -37,7 +37,7 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
         freespace_heuristic_costmap = NULL;
     } else {
         freespace_heuristic_costmap = new freespace_mechanism_heuristic::HeuristicCostMap(
-                freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapMaxCost);
+                freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapInfiniteCost);
     }
 
     update_planning_scene();
@@ -384,9 +384,7 @@ int EnvironmentNavXYThetaLatMoveit::GetFromToHeuristic(int FromStateID, int ToSt
     int dx = toX - fromX;
     int dy = toY - fromY;
 
-    int hfs = 0;
-    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
-        hfs = freespace_heuristic_costmap->getCost(dx, dy, fromTheta, toTheta);
+    int hfs = getFreespaceCost(dx, dy, fromTheta, toTheta);
 
     count++;
     if(count % 1000 == 0) {
@@ -415,9 +413,7 @@ int EnvironmentNavXYThetaLatMoveit::GetStartHeuristic(int stateID)
     dy = -dy;
     int endTh = theta;
 
-    int hfs = 0;
-    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
-        hfs = freespace_heuristic_costmap->getCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
+    int hfs = getFreespaceCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
 
     count++;
     if(count % 1000 == 0) {
@@ -461,9 +457,7 @@ int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
     int dy = EnvNAVXYTHETALATCfg.EndY_c - y;
     int startTh = theta;
 
-    int hfs = 0;
-    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
-        hfs = freespace_heuristic_costmap->getCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
+    int hfs = getFreespaceCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
 
     count++;
     if(count % 1000 == 0) {
@@ -476,6 +470,44 @@ int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
     past++;
     return heur;
 }
+
+int EnvironmentNavXYThetaLatMoveit::getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end)
+{
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap){
+        hfs = freespace_heuristic_costmap->getCost(deltaX, deltaY, theta_start, theta_end);
+        //std::cout << "got first cost " << hfs << std::endl;
+        if(hfs == INFINITECOST){
+            // figure out cell in freespace_heuristic_costmap in the direction of deltaX, deltaY
+            int maxdx = freespace_heuristic_costmap->getWidth()/2-2;
+            int maxdy = freespace_heuristic_costmap->getHeight()/2-2;
+            // y coordinate corresponding to maxdx in direction of deltaX, deltaY, and vice versa
+            int yForMaxdx = deltaX==0? (deltaY>0?maxdy:-maxdy) : (maxdx*deltaY)/abs(deltaX);
+            int xForMaxdy = deltaY==0? (deltaX>0?maxdx:-maxdx) : (maxdy*deltaX)/abs(deltaY);
+            int deltaXInMap = deltaX >= 0? maxdx : -maxdx;
+            int deltaYInMap = yForMaxdx;
+            //std::cout << "step 1: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
+            if(abs(deltaYInMap) > maxdy){
+                deltaXInMap = xForMaxdy;
+                deltaYInMap = deltaY >= 0? maxdy : -maxdy;
+                ROS_ASSERT(abs(xForMaxdy) <= maxdx);
+            }
+            //std::cout << "step 2: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
+            int hdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, 0)
+                + getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, 0, theta_end);
+            for(size_t i = 1; i < EnvNAVXYTHETALATCfg.NumThetaDirs; ++i){
+                int hnewdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, i)
+                    + getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, i, theta_end);
+                if(hnewdelta < hdelta){
+                    hdelta = hnewdelta;
+                }
+            }
+            hfs = hdelta;
+        }
+    }
+    return hfs;
+}
+
 
 void EnvironmentNavXYThetaLatMoveit::resetTimingStats()
 {
