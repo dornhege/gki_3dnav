@@ -162,6 +162,14 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
         cost_possibly_circumscribed_tresh = inflation_layer->computeCost(
                 costmap_ros_->getLayeredCostmap()->getCircumscribedRadius() / 
                 costmap_ros_->getCostmap()->getResolution());
+
+        // TODO footprint should come dynamically from moveit state (+ need extra checks that it's updatable)
+        // for AD* will make stuff immovable (force_scratch)
+        cost_possibly_circumscribed_tresh = inflation_layer->computeCost(
+                0.95 /
+                costmap_ros_->getCostmap()->getResolution());
+        ROS_INFO("With radius circumscribed %f - cost %d (SBPL %d)", 0.95, cost_possibly_circumscribed_tresh,
+                costMapCostToSBPLCost(cost_possibly_circumscribed_tresh));
         ROS_INFO("Radii: inscribed: %f circumscribed: %f",
                 costmap_ros_->getLayeredCostmap()->getInscribedRadius(),
                 costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());

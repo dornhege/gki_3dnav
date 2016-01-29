@@ -341,6 +341,11 @@ bool EnvironmentNavXYThetaLatMoveit::in_full_body_collision(EnvNAVXYTHETALATHash
 {
     timeFullBodyCollision->start();
     ScopeExit se(boost::bind(&Timing::end, timeFullBodyCollision));
+    // TODO flag that we are allowed to do that by cost_possibly_circumscribed_cost
+    // must be correctly set
+    // TODO can do that in costmap as this is applicability and not cost -> better cost resolution
+    if(EnvNAVXYTHETALATCfg.Grid2D[state->X][state->Y] < EnvNAVXYTHETALATCfg.cost_possibly_circumscribed_thresh)
+        return false;
     return get_full_body_collision_info(state).collision;
 }
 
