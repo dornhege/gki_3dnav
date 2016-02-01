@@ -7,15 +7,55 @@
 #include <ros/ros.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
-#include <navigation/mapping/metaMap/base/traversableMap.h>
 #include <moveit_msgs/DisplayTrajectory.h>
+#include <navigation/mapping/metaMap/base/traversableMap.h>
 #include <sbpl/utils/key.h>
+#include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 #include "timing/timing.h"
 
-#include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
+//#include <interactive_markers/interactive_marker_server.h>
 
-#include <interactive_markers/interactive_marker_server.h>
-
+/// Planning environment for x, y, theta planning with 2.5d collision checking for the BoniRob.
+/**
+ * There are multiple continuous and discretized coordinate systems.
+ *
+ * External interface with continuous (double) coordinates:
+ * These are assumed to be in the scene's planning frame. If the costmap is in
+ * another frame, no conversion is performed and planning will likely fail.
+ * Thus, for now, the costmap's frame must be identical to the scene's planning
+ * frame.
+ *
+ * Environment continuous coordinates:
+ * The environment assumes a coordinate system with origin at 0, 0 that can be
+ * directly discretized to the internal grid. This should be used internally
+ * only.
+ *
+ * Discretized coordinates:
+ * These are always discretized with the same linear and angular resolution for
+ * all discretized coordinate systems. The angular resolution is given by
+ * NumThetaDirs, the linear resolution is cellsize_m and should be identical to
+ * the costmap resolution and the motion primitive's resolution. There are
+ * possibly two discretizatons:
+ *
+ * Internal environment coordinates:
+ * The actual underlying x, y, theta indices in the environment used for
+ * planning, i.e., the ones that are converted to/from SBPL state IDs.  This is
+ * usually identical with the internal grid in the environment that is used for
+ * the cost lookup.
+ * All functions taking discretized coordinates use these coordinates!
+ * For now, the grid is 0-indexed, initialized with the costmap size and the
+ * 0,0 grid index lies at the costmap 0, 0.
+ *
+ * Costmap: The x, y indices of the ROS costmap. For now the internal grid is
+ * initialized from the same size and offset as the costmap. If that is ever to
+ * be changed, i.e., to adapt to a costmap too small to fit the octomap size,
+ * care has to be taken that all functions taking grid coordinates are used
+ * correctly.
+ * All functions in the environment use environment indices.
+ * External use, e.g., updating the grid, usually from the costmap cannot assume
+ * that the grid coordinates are valid for costmap coordinates. These functions
+ * would need to use the ...Costmap style function, which convert.
+ */
 class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 {
  public:
@@ -191,7 +231,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   tf::TransformListener* tfListener;
 
   std::string planningFrameID;
-  interactive_markers::InteractiveMarkerServer* interserver;
+  //interactive_markers::InteractiveMarkerServer* interserver;
 };
 
 #endif // ENVIRONMENT_NAVXYTHETALAT_FLOURISH_H

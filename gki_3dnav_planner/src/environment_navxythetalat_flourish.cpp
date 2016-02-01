@@ -855,9 +855,12 @@ int EnvironmentNavXYThetaLatFlourish::getFreespaceCost(int deltaX, int deltaY, i
       // figure out cell in freespace_heuristic_costmap in the direction of deltaX, deltaY
       int maxdx = freespace_heuristic_costmap->getWidth()/2-2;
       int maxdy = freespace_heuristic_costmap->getHeight()/2-2;
+      int signX =  deltaX >= 0? 1 : -1;
+      int signY =  deltaY >= 0? 1 : -1;
+	
       // y coordinate corresponding to maxdx in direction of deltaX, deltaY, and vice versa
-      int yForMaxdx = deltaX==0? maxdy : (maxdx*deltaY)/abs(deltaX);
-      int xForMaxdy = deltaY==0? maxdx : (maxdy*deltaX)/abs(deltaY);
+      int yForMaxdx = deltaX==0? signY*maxdy : (maxdx*deltaY)/abs(deltaX);
+      int xForMaxdy = deltaY==0? signX*maxdx : (maxdy*deltaX)/abs(deltaY);
       int deltaXInMap = deltaX >= 0? maxdx : -maxdx;
       int deltaYInMap = yForMaxdx;
       //std::cout << "step 1: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
