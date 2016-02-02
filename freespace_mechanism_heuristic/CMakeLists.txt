@@ -124,6 +124,7 @@ include_directories(
 add_library(freespace_mechanism_heuristic
   src/freespace_mechanism_heuristic.cpp
 )
+target_link_libraries(freespace_mechanism_heuristic ${SBPL_LIBRARIES})
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
