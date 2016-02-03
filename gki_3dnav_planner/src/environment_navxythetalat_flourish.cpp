@@ -65,36 +65,36 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   mapOffsetY = offset.y();
   
   tfListener = new tf::TransformListener();
-  tf::StampedTransform rightFrontWheelToBaseLinkTransform, leftFrontWheelToBaseLinkTransform, rightRearWheelToBaseLinkTransform, leftRearWheelToBaseLinkTransform;
+  tf::StampedTransform baseLinkTofrWheelTransform, baseLinkToflWheelTransform, baseLinkTorrWheelTransform, baseLinkTorlWheelTransform;
 
   //ros::Time now = ros::Time::now();
 
   try{
-    tfListener->waitForTransform("/wheel_fr_link",  "/base_link", 
+    tfListener->waitForTransform("/base_link", "/wheel_fr_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener->lookupTransform("/wheel_fr_link",  "/base_link", 
-    				ros::Time(0), rightFrontWheelToBaseLinkTransform);
-    tfListener->waitForTransform("/wheel_fl_link",  "/base_link", 
+    tfListener->lookupTransform("/base_link", "/wheel_fr_link", 
+    				ros::Time(0), baseLinkTofrWheelTransform);
+    tfListener->waitForTransform("/base_link", "/wheel_fl_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener->lookupTransform("/wheel_fl_link",  "/base_link", 
-    				ros::Time(0), leftFrontWheelToBaseLinkTransform);
-    tfListener->waitForTransform("/wheel_rr_link",  "/base_link", 
+    tfListener->lookupTransform("/base_link", "/wheel_fl_link", 
+    				ros::Time(0), baseLinkToflWheelTransform);
+    tfListener->waitForTransform("/base_link", "/wheel_rr_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener->lookupTransform("/wheel_rr_link",  "/base_link", 
-    				ros::Time(0), rightRearWheelToBaseLinkTransform);
-    tfListener->waitForTransform("/wheel_rl_link",  "/base_link", 
+    tfListener->lookupTransform("/base_link", "/wheel_rr_link", 
+    				ros::Time(0), baseLinkTorrWheelTransform);
+    tfListener->waitForTransform("/base_link", "/wheel_rl_link", 
     				 ros::Time(0), ros::Duration(1.5));
-    tfListener->lookupTransform("/wheel_rl_link",  "/base_link", 
-    				ros::Time(0), leftRearWheelToBaseLinkTransform);
+    tfListener->lookupTransform("/base_link", "/wheel_rl_link", 
+    				ros::Time(0), baseLinkTorlWheelTransform);
   }catch (tf::TransformException ex){
     ROS_ERROR("%s",ex.what());
     ros::Duration(1.0).sleep();
   }
 
-  rightFrontWheelToBaseLink = stampedTfToIsometry(rightFrontWheelToBaseLinkTransform);
-  leftFrontWheelToBaseLink = stampedTfToIsometry(leftFrontWheelToBaseLinkTransform);
-  rightRearWheelToBaseLink = stampedTfToIsometry(rightRearWheelToBaseLinkTransform);
-  leftRearWheelToBaseLink = stampedTfToIsometry(leftRearWheelToBaseLinkTransform);
+  baseLinkTofrWheel = stampedTfToIsometry(baseLinkTofrWheelTransform);
+  baseLinkToflWheel = stampedTfToIsometry(baseLinkToflWheelTransform);
+  baseLinkTorrWheel = stampedTfToIsometry(baseLinkTorrWheelTransform);
+  baseLinkTorlWheel = stampedTfToIsometry(baseLinkTorlWheelTransform);
 
   nhPriv->param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
   scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
@@ -402,6 +402,7 @@ geometry_msgs::Pose EnvironmentNavXYThetaLatFlourish::poseFromStateID(int stateI
   }*/
 
 void EnvironmentNavXYThetaLatFlourish::computeWheelPositions(){
+  //TODO: probably the wrong way round?
   tf::StampedTransform frWheelTofrArmUpperLinkT, flWheelToflArmUpperLinkT, rrWheelTorrArmUpperLinkT, rlWheelTorlArmUpperLinkT, flArmUpperToBaseLinkT, rlArmUpperToBaseLinkT, rrArmUpperToBaseLinkT, frArmUpperToBaseLinkT;
 
   //ros::Time now = ros::Time::now();
@@ -1205,14 +1206,32 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   //TODO: also check other footprint cells for height
   int theta = NORMALIZEDISCTHETA(Theta, NAVXYTHETALAT_THETADIRS);
   sbpl_xy_theta_pt_t coords = gridToWorld(X, Y, Theta);
-  Eigen::Isometry3f baseTrafo = Eigen::Isometry3f::Identity();
-  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, baseTrafo);
+  Eigen::Isometry3f worldToBaseLinkTrafo = Eigen::Isometry3f::Identity();
+  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, worldToBaseLinkTrafo);
 
+  Eigen::Vector3f rfWheelInRobot = baseLinkTofrWheel.translation();
+  Eigen::Vector3f lfWheelInRobot = baseLinkToflWheel.translation();
+  Eigen::Vector3f rrWheelInRobot = baseLinkTorrWheel.translation();
+  Eigen::Vector3f lrWheelInRobot = baseLinkTorlWheel.translation();
+
+  //TODO: check wheel cell computation
   timeTrafoComputation->start();
-  Eigen::Isometry3f rfWheelToGlobal = baseTrafo*rightFrontWheelToBaseLink;
-  Eigen::Isometry3f lfWheelToGlobal = baseTrafo*leftFrontWheelToBaseLink;
-  Eigen::Isometry3f rrWheelToGlobal = baseTrafo*rightRearWheelToBaseLink;
-  Eigen::Isometry3f lrWheelToGlobal = baseTrafo*leftRearWheelToBaseLink;
+  Eigen::Vector3f rfWheelCoordinates = worldToBaseLinkTrafo*rfWheelInRobot;
+  Eigen::Vector3f lfWheelCoordinates = worldToBaseLinkTrafo*lfWheelInRobot;
+  Eigen::Vector3f rrWheelCoordinates = worldToBaseLinkTrafo*rrWheelInRobot;
+  Eigen::Vector3f lrWheelCoordinates = worldToBaseLinkTrafo*lrWheelInRobot;
+
+  Eigen::Vector2i rfWheelIndex, lfWheelIndex, rrWheelIndex, lrWheelIndex;
+  world2dToGrid(rfWheelCoordinates.x(), rfWheelCoordinates.y(), rfWheelIndex.x(), rfWheelIndex.y());
+  world2dToGrid(lfWheelCoordinates.x(), lfWheelCoordinates.y(), lfWheelIndex.x(), lfWheelIndex.y());
+  world2dToGrid(rrWheelCoordinates.x(), rrWheelCoordinates.y(), rrWheelIndex.x(), rrWheelIndex.y());
+  world2dToGrid(lrWheelCoordinates.x(), lrWheelCoordinates.y(), lrWheelIndex.x(), lrWheelIndex.y());
+
+  /*
+  Eigen::Isometry3f rfWheelToGlobal = worldToBaseLinkTrafo*rightFrontWheelToBaseLink;
+  Eigen::Isometry3f lfWheelToGlobal = worldToBaseLinkTrafo*leftFrontWheelToBaseLink;
+  Eigen::Isometry3f rrWheelToGlobal = worldToBaseLinkTrafo*rightRearWheelToBaseLink;
+  Eigen::Isometry3f lrWheelToGlobal = worldToBaseLinkTrafo*leftRearWheelToBaseLink;
   Eigen::Vector2f rfWheelCoordinates(rfWheelToGlobal.translation().x(), rfWheelToGlobal.translation().y());
   Eigen::Vector2f lfWheelCoordinates(lfWheelToGlobal.translation().x(), lfWheelToGlobal.translation().y());
   Eigen::Vector2f rrWheelCoordinates(rrWheelToGlobal.translation().x(), rrWheelToGlobal.translation().y());
@@ -1220,8 +1239,13 @@ int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   Eigen::Vector2i rfWheelIndex = world2dToGrid(rfWheelCoordinates);
   Eigen::Vector2i lfWheelIndex = world2dToGrid(lfWheelCoordinates);
   Eigen::Vector2i rrWheelIndex = world2dToGrid(rrWheelCoordinates);
-  Eigen::Vector2i lrWheelIndex = world2dToGrid(lrWheelCoordinates);
+  Eigen::Vector2i lrWheelIndex = world2dToGrid(lrWheelCoordinates);*/
   timeTrafoComputation->end();
+
+  //\std::cout << std::endl << "worldToBaseLinkTrafo: " << std::endl << worldToBaseLinkTrafo.matrix() << std::endl << std::endl;
+  //\std::cout << "wheel in robot coordinates: " << rfWheelInRobot.transpose() << ", " << lfWheelInRobot.transpose() << ", " << rrWheelInRobot.transpose() << ", " << lrWheelInRobot.transpose() << std::endl;
+  //\std::cout << "wheel coordinates: " << rfWheelCoordinates.transpose() << ", " << lfWheelCoordinates.transpose() << ", " << rrWheelCoordinates.transpose() << ", " << lrWheelCoordinates.transpose() << std::endl;
+  //\std::cout << "wheel cells: " << rfWheelIndex.transpose() << ", " << lfWheelIndex.transpose() << ", " << rrWheelIndex.transpose() << ", " << lrWheelIndex.transpose() << std::endl;
 
   // check if position of the robot centre and the wheel cells are inside the map, the centre cell is not too high and the wheel cells are traversable
   Eigen::Vector2i index(X, Y);

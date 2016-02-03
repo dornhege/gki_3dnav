@@ -205,6 +205,7 @@ namespace flourish_planner{
       int obst_cost_thresh = costMapCostToSBPLCost(costmap_2d::LETHAL_OBSTACLE);
       vector<sbpl_2Dpt_t> perimeterptsV;
       perimeterptsV.reserve(footprint.size());
+      std::cout << "footprint:" << std::endl;
       for (size_t ii(0); ii < footprint.size(); ++ii){
 	sbpl_2Dpt_t pt;
 	pt.x = footprint[ii].x;

@@ -211,7 +211,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   double mapOffsetX;
   double mapOffsetY;
   Ais3dTools::TraversableMap tMap;
-  Eigen::Isometry3f rightFrontWheelToBaseLink, leftFrontWheelToBaseLink, rightRearWheelToBaseLink, leftRearWheelToBaseLink;
+  Eigen::Isometry3f baseLinkTofrWheel, baseLinkToflWheel, baseLinkTorrWheel, baseLinkTorlWheel;
 
   Timing* timeActionCost;
   //Timing* timeActionCostParent;
