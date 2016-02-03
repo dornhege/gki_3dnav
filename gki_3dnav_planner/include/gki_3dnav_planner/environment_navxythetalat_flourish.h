@@ -13,7 +13,7 @@
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 #include "timing/timing.h"
 
-//#include <interactive_markers/interactive_marker_server.h>
+#include <interactive_markers/interactive_marker_server.h>
 
 /// Planning environment for x, y, theta planning with 2.5d collision checking for the BoniRob.
 /**
@@ -135,7 +135,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   //virtual void publish_expanded_states();
   void publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells);
   void publish_traversable_map();
-  //void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
+  void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
 
   int count;
   int past;
@@ -203,9 +203,6 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 
   //ros::Publisher pose_array_publisher;
   //ros::Publisher nontravpose_array_publisher;
-  //ros::Publisher nontravaction_array_publisher;
-  //ros::Publisher action_array_publisher;
-  //ros::Publisher endtheta_array_publisher;
 
   // offsets to convert costmap coordinates to world coordinates for 3d collision checks
   double mapOffsetX;
@@ -231,7 +228,13 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   tf::TransformListener* tfListener;
 
   std::string planningFrameID;
-  //interactive_markers::InteractiveMarkerServer* interserver;
+  
+  //DEBUG
+  ros::Publisher nontravaction_array_publisher;
+  ros::Publisher action_array_publisher;
+  ros::Publisher endtheta_array_publisher;
+  ros::Publisher nontrav_endtheta_array_publisher;
+  interactive_markers::InteractiveMarkerServer* interserver;
 };
 
 #endif // ENVIRONMENT_NAVXYTHETALAT_FLOURISH_H

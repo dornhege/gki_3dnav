@@ -257,6 +257,8 @@ namespace flourish_planner{
 							&FlourishPlanner::sampleValidPoses, this);
       srand48(time(NULL));
 
+      env_->publish_traversable_map();
+
 
       initialized_ = true;
     }
@@ -439,8 +441,6 @@ namespace flourish_planner{
       ROS_ERROR("Global planner is not initialized");
       return false;
     }
-
-    env_->publish_traversable_map();
 
     /*if (! transformPoseToPlanningFrame(start))
       {

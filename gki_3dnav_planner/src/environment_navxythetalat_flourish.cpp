@@ -118,9 +118,10 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   traversable_map_publisher = nhPriv->advertise<visualization_msgs::Marker>("travmap", 1, true); 
   //pose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
   //nontravpose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
-  //nontravaction_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_actions", 1, true);
-  //action_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
-  //endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
+  nontravaction_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_actions", 1, true);
+  action_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
+  endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
+  nontrav_endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_endthetas", 1, true);
 
   timeActionCost = new Timing("action_cost", true, Timing::SP_STATS, false);
   //timeActionCostParent = new Timing("action_cost_parent", true, Timing::SP_STATS, false);
@@ -134,14 +135,14 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   ////////////// interactive marker /////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////  
   // create an interactive marker server on the topic namespace simple_marker
-  /*interserver = new interactive_markers::InteractiveMarkerServer("simple_marker");
+  interserver = new interactive_markers::InteractiveMarkerServer("simple_marker");
 
   // create an interactive marker for our server
   visualization_msgs::InteractiveMarker int_marker;
-  int_marker.header.frame_id = getPlanningScene()->getPlanningFrame();
-  int_marker.header.stamp=ros::Time::now();
-  int_marker.name = "my_marker";
-  int_marker.description = "Simple 1-DOF Control";
+  int_marker.header.frame_id = "odom";// getPlanningScene()->getPlanningFrame();
+  int_marker.header.stamp = ros::Time::now();
+  int_marker.name = "action_check";
+  int_marker.description = "Action Check";
 
   // create a grey box marker
   visualization_msgs::Marker box_marker;
@@ -162,6 +163,7 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   // add the control to the interactive marker
   int_marker.controls.push_back(box_control);
 
+  std::cout << "set possible actions on interserver" << std::endl;
   // create a control which will move the box
   // this control does not contain any markers,
   // which will cause RViz to insert two arrows
@@ -191,12 +193,15 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   control.interaction_mode = visualization_msgs::InteractiveMarkerControl::MOVE_AXIS;
   int_marker.controls.push_back(control);
 
+  std::cout << "binding processMarkerFeedback to interserver" << std::endl;
   // add the interactive marker to our collection &
   // tell the server to call processFeedback() when feedback arrives for it
   interserver->insert(int_marker, boost::bind(&EnvironmentNavXYThetaLatFlourish::processMarkerFeedback, this, _1));
+  std::cout << "done" << std::endl;
 
   // 'commit' changes and send to all clients
-  interserver->applyChanges();*/
+  interserver->applyChanges();
+  std::cout << "applied changes" << std::endl;
   //////////////////////////////////////end of interactive marker stuff////////////////////////////////////
 }
 
@@ -635,7 +640,7 @@ moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatFlourish::pathToDisplayTr
       tf::transformMsgToTF(tf, curPose);
       tf::Transform delta = lastPose.inverseTimes(curPose);
       if(hypot(delta.getOrigin().x(), delta.getOrigin().y()) < 0.05 &&
-	 tf::getYaw(delta.getRotation()) < 0.2)
+	 fabs(tf::getYaw(delta.getRotation())) < 0.2)
 	continue;
     }
 
@@ -1016,7 +1021,7 @@ void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
   }
 
   visualization_msgs::Marker marker;
-  marker.header.frame_id = getPlanningScene()->getPlanningFrame();
+  marker.header.frame_id = "odom";//getPlanningScene()->getPlanningFrame();
   marker.header.stamp = ros::Time::now();
   marker.ns = "traversability_map";
   marker.id = 0;
@@ -1126,21 +1131,24 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
 
 
 
-/*void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback )
+void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback )
 {
-  ROS_INFO_STREAM( feedback->marker_name << " is now at "
-		   << feedback->pose.position.x << ", " << feedback->pose.position.y
-		   << ", " << feedback->pose.position.z );
-  planningFrameID = getPlanningScene()->getPlanningFrame();
+  //ROS_INFO_STREAM( feedback->marker_name << " is now at "
+  //		   << feedback->pose.position.x << ", " << feedback->pose.position.y
+  //		   << ", " << feedback->pose.position.z );
+  planningFrameID = "odom";//getPlanningScene()->getPlanningFrame();
 
   geometry_msgs::PoseArray travmsg;
   geometry_msgs::PoseArray nontravmsg;
+  geometry_msgs::PoseArray endthetatravmsg;
+  geometry_msgs::PoseArray endthetanontravmsg;
   geometry_msgs::PoseArray* msg;
-  geometry_msgs::PoseArray endthetamsg;
+  geometry_msgs::PoseArray* endthetamsg;
 
   travmsg.header.frame_id = planningFrameID;
   nontravmsg.header.frame_id = planningFrameID;
-  endthetamsg.header.frame_id = planningFrameID;
+  endthetatravmsg.header.frame_id = planningFrameID;
+  endthetanontravmsg.header.frame_id = planningFrameID;
 
   geometry_msgs::Pose pose = feedback->pose;
   float theta_c = Ais3dTools::TransformationRepresentation::getYawFromQuaternion<float>(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
@@ -1148,7 +1156,7 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
   int source_x, source_y, theta_d;
   worldToGrid(pose.position.x, pose.position.y, theta_c, source_x, source_y, theta_d);
 
-  std::cout << "actionwidth: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
+  //std::cout << "actionwidth: " << EnvNAVXYTHETALATCfg.actionwidth << std::endl;
   
   for (aind = 0; aind < EnvNAVXYTHETALATCfg.actionwidth; aind++) {
     //visualization_msgs::Marker marker;
@@ -1156,10 +1164,10 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
     geometry_msgs::Pose endthetapose;
     
     EnvNAVXYTHETALATAction_t* action = &EnvNAVXYTHETALATCfg.ActionsV[theta_d][aind];
-    std::cout << "thetas: ";
-    for(size_t i = 0; i < action->interm3DcellsV.size(); ++i){
-      std::cout << action->interm3DcellsV.at(i).theta << " ";
-    }
+    //std::cout << "thetas: ";
+    //for(size_t i = 0; i < action->interm3DcellsV.size(); ++i){
+    //  std::cout << action->interm3DcellsV.at(i).theta << " ";
+    //}
     if(action->interm3DcellsV.size() == 0){
       std::cout << "No following cells, skipping" << std::endl;
       continue;
@@ -1169,11 +1177,14 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
     int endtheta_d = action->interm3DcellsV.at(action->interm3DcellsV.size()-1).theta;
     double endtheta_c = DiscTheta2Cont(endtheta_d, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
-    std::cout << "processing action " << aind << " for theta " << theta_d << ", dX = " << dX_d<< ", dY = " << dY_d << std::endl; //" endtheta = " << action->endtheta;
+    //std::cout << "processing action " << aind << " for theta " << theta_d << ", dX = " << dX_d<< ", dY = " << dY_d << std::endl; //" endtheta = " << action->endtheta;
     if(GetActionCost(source_x, source_y, theta_d, action) < INFINITECOST){
       msg = &travmsg;
+      endthetamsg = &endthetatravmsg;
     }else{
       msg = &nontravmsg;
+      endthetamsg = &endthetanontravmsg;
+      std::cout << "invalid action " << aind << " at pose " << pose.position.x << ", " << pose.position.y << ", " << theta_c << std::endl;
     }
     double dX_c, dY_c;
     dX_c = dX_d*tMap.getResolution();
@@ -1182,23 +1193,24 @@ void EnvironmentNavXYThetaLatFlourish::publish_wheel_cells(std::vector<Eigen::Ve
 
     marker.position.x = pose.position.x;
     marker.position.y = pose.position.y;
-    marker.position.z = 0.1;
+    marker.position.z = 0.2;
     Ais3dTools::TransformationRepresentation::getQuaternionFromEuler(0., 0., yaw, marker.orientation.w, marker.orientation.x, marker.orientation.y, marker.orientation.z);
 
     endthetapose.position.x = pose.position.x + dX_c;
     endthetapose.position.y = pose.position.y + dY_c;
-    endthetapose.position.z = 0.1;
+    endthetapose.position.z = 0.2;
     Ais3dTools::TransformationRepresentation::getQuaternionFromEuler(0., 0., endtheta_c, endthetapose.orientation.w, endthetapose.orientation.x, endthetapose.orientation.y, endthetapose.orientation.z);
   
     msg->poses.push_back(marker);
-    endthetamsg.poses.push_back(endthetapose);
-    std::cout << "pushing back marker with yaw " << yaw << std::endl;
+    endthetamsg->poses.push_back(endthetapose);
+    //std::cout << "pushing back marker with yaw " << yaw << std::endl;
 
   }
   action_array_publisher.publish(travmsg);
   nontravaction_array_publisher.publish(nontravmsg);
-  endtheta_array_publisher.publish(endthetamsg);
-  }*/
+  endtheta_array_publisher.publish(endthetatravmsg);
+  nontrav_endtheta_array_publisher.publish(endthetanontravmsg);
+}
 
 int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   timeConfigCollisionCheck->start();
