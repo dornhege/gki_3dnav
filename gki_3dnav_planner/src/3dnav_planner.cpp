@@ -272,7 +272,7 @@ std::string GKI3dNavPlanner::getPlanningFrame() const
 //This rescales the costmap according to a rosparam which sets the obstacle cost
 unsigned char GKI3dNavPlanner::costMapCostToSBPLCost(unsigned char newcost)
 {
-    if (newcost == costmap_2d::LETHAL_OBSTACLE)
+    if (newcost >= costmap_2d::LETHAL_OBSTACLE)     // lethal and no_information are lethal
         return lethal_obstacle_;
     else if (newcost == costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
         return inscribed_inflated_obstacle_;

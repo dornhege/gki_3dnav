@@ -17,6 +17,7 @@ footprint_padding: 0.01
 #cost_scaling_factor: 10.0
 lethal_cost_threshold: 100
 observation_sources: base_scan
+track_unknown_space: true
 
 inflation_layer:
   cost_scaling_factor: 4.5
