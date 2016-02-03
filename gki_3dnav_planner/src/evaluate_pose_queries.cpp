@@ -11,6 +11,8 @@ std::vector< std::pair<geometry_msgs::PoseStamped, geometry_msgs::PoseStamped> >
 std::vector<gki_3dnav_planner::PlannerStats> g_Stats;
 bool g_StatsReceived;
 
+bool g_ReverseQueries = false;
+
 void posesCallback(const geometry_msgs::PoseArray & pa)
 {
     ROS_INFO("Got PA size: %zu", pa.poses.size());
@@ -21,7 +23,12 @@ void posesCallback(const geometry_msgs::PoseArray & pa)
     psGoal.header = pa.header;
     for(int i = 0; i < pa.poses.size(); ++i) {
         // no reverse queries?
-        for(int j = i + 1; j < pa.poses.size(); ++j) {
+        int j = i + 1;
+        if(g_ReverseQueries)
+            j = 0;
+        for(; j < pa.poses.size(); ++j) {
+            if(i == j)
+                continue;
             psStart.pose = pa.poses[i];
             psGoal.pose = pa.poses[j];
             if(hypot(psStart.pose.position.x - psGoal.pose.position.x,
@@ -50,6 +57,7 @@ void collectData()
         srv.request.start = poseQueries[i].first;
         srv.request.goal = poseQueries[i].second;
         bool err = false;
+        ROS_INFO("Calling plan for query: %d", i);
         if(!ros::service::call("/move_base_node/make_plan", srv) || srv.response.plan.poses.empty()) {
             ROS_ERROR("Could not plan for %d", i);
             // FIXME also no plan found
@@ -80,6 +88,20 @@ void writeKeyVal(YAML::Emitter & em, const std::string & key, const T& val)
     em << val;
 }
 
+void yamlPose(YAML::Emitter & emitter, const geometry_msgs::PoseStamped & ps)
+{
+    emitter << YAML::BeginMap;
+    writeKeyVal(emitter, "frame_id", ps.header.frame_id);
+    writeKeyVal(emitter, "x", ps.pose.position.x);
+    writeKeyVal(emitter, "y", ps.pose.position.y);
+    writeKeyVal(emitter, "z", ps.pose.position.z);
+    writeKeyVal(emitter, "qx", ps.pose.orientation.x);
+    writeKeyVal(emitter, "qy", ps.pose.orientation.y);
+    writeKeyVal(emitter, "qz", ps.pose.orientation.z);
+    writeKeyVal(emitter, "qw", ps.pose.orientation.w);
+    emitter << YAML::EndMap;
+}
+
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "evaluate_pose_queries");
@@ -94,15 +116,22 @@ int main(int argc, char** argv)
         rate.sleep();
     }
 
+    std::vector<gki_3dnav_planner::PlannerStats> freespace_stats;
+    ros::param::set("/move_base_node/GKI3dNavPlanner/use_freespace_heuristic", true);
+    collectData();
+    freespace_stats = g_Stats;
+
     std::vector<gki_3dnav_planner::PlannerStats> no_freespace_stats;
     ros::param::set("/move_base_node/GKI3dNavPlanner/use_freespace_heuristic", false);
     collectData();
     no_freespace_stats = g_Stats;
 
-    std::vector<gki_3dnav_planner::PlannerStats> freespace_stats;
-    ros::param::set("/move_base_node/GKI3dNavPlanner/use_freespace_heuristic", true);
-    collectData();
-    freespace_stats = g_Stats;
+    if(poseQueries.size() != no_freespace_stats.size()) {
+        ROS_ERROR("poseQueries size %zu != no_freespace_stats size %zu", poseQueries.size(), no_freespace_stats.size());
+    }
+    if(poseQueries.size() != freespace_stats.size()) {
+        ROS_ERROR("poseQueries size %zu != no_freespace_stats %zu", poseQueries.size(), freespace_stats.size());
+    }
 
     YAML::Emitter emitter;
     emitter << YAML::BeginMap;
@@ -110,7 +139,22 @@ int main(int argc, char** argv)
     emitter << "no_freespace_stats";
     emitter << YAML::Value;
     emitter << YAML::BeginSeq;
+    int stat_index = 0;
     forEach(const gki_3dnav_planner::PlannerStats & ps, no_freespace_stats) {
+        emitter << YAML::BeginMap;
+        if(stat_index < poseQueries.size()) {
+            emitter << YAML::Key;
+            emitter << "start_pose";
+            emitter << YAML::Value;
+            yamlPose(emitter, poseQueries[stat_index].first);
+            emitter << YAML::Key;
+            emitter << "goal_pose";
+            emitter << YAML::Value;
+            yamlPose(emitter, poseQueries[stat_index].second);
+        }
+        emitter << YAML::Key;
+        emitter << "planner_stats";
+        emitter << YAML::Value;
         emitter << YAML::BeginSeq;
         forEach(const gki_3dnav_planner::PlannerStat & pss, ps.stats) {
             emitter << YAML::BeginMap;
@@ -123,6 +167,8 @@ int main(int argc, char** argv)
             emitter << YAML::EndMap;
         }
         emitter << YAML::EndSeq;
+        emitter << YAML::EndMap;
+        stat_index++;
     }
     emitter << YAML::EndSeq;
 
@@ -131,6 +177,20 @@ int main(int argc, char** argv)
     emitter << YAML::Value;
     emitter << YAML::BeginSeq;
     forEach(const gki_3dnav_planner::PlannerStats & ps, freespace_stats) {
+        emitter << YAML::BeginMap;
+        if(stat_index < poseQueries.size()) {
+            emitter << YAML::Key;
+            emitter << "start_pose";
+            emitter << YAML::Value;
+            yamlPose(emitter, poseQueries[stat_index].first);
+            emitter << YAML::Key;
+            emitter << "goal_pose";
+            emitter << YAML::Value;
+            yamlPose(emitter, poseQueries[stat_index].second);
+        }
+        emitter << YAML::Key;
+        emitter << "planner_stats";
+        emitter << YAML::Value;
         emitter << YAML::BeginSeq;
         forEach(const gki_3dnav_planner::PlannerStat & pss, ps.stats) {
             emitter << YAML::BeginMap;
@@ -143,7 +203,7 @@ int main(int argc, char** argv)
             emitter << YAML::EndMap;
         }
         emitter << YAML::EndSeq;
-
+        emitter << YAML::EndMap;
     }
     emitter << YAML::EndSeq;
     emitter << YAML::EndMap;
