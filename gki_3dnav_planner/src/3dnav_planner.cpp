@@ -386,8 +386,6 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
     env_->publish_planning_scene();
     private_nh_->getParam("use_freespace_heuristic", use_freespace_heuristic_);
     env_->useFreespaceHeuristic(use_freespace_heuristic_);
-    env_->count = 0;
-    env_->past = 0;
     bool planOK = makePlan_(start, goal, plan);
     if(planOK) {
         moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);

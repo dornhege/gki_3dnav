@@ -131,15 +131,12 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
         virtual int GetStartHeuristic(int stateID);
         virtual int GetGoalHeuristic(int stateID);
-        int getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end);
+        int getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end, int depth = 0);
 
         moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
 
         void resetTimingStats();
         void printTimingStats();
-
-        int count;
-        int past;
 
     protected:
         virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
@@ -182,6 +179,7 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
 
         Timing* timeActionCost;
         Timing* timeActionCostParent;
+        Timing* timeFreespace;
         Timing* timeFullBodyCollision;
         Timing* time3dCheck;
         Timing* timeHeuristic;
