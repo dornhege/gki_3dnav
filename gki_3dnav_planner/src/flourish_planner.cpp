@@ -151,6 +151,7 @@ namespace flourish_planner{
       if(!tMap.loadTraversabilityAndElevation(traversability_map_file.c_str())) {
 	ROS_ERROR("Failed to load traversability map %s", traversability_map_file.c_str());
       }
+      tMap.computeDistanceMap();
 	
       // initialize traversableMap
       // TODO: initialize stuff consistently (i.e. travmap and cfg)

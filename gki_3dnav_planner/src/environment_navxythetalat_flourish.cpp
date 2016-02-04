@@ -56,7 +56,7 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   robotBodyWidth = 2.0; 
   robotBodyLength = 2.0;
   robotArmLength = 0.6;
-  robotMinSafeDistance = 0.1;
+  robotMinSafeDistance = 0.2;
   robotSafeHeight = robotHeight - robotMinSafeDistance;
 
   Eigen::Vector2f offset;
@@ -123,6 +123,8 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
   nontrav_endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_endthetas", 1, true);
 
+  //plan_subscriber = nhPriv->subscribe("/move_base_node/FlourishPlanner/plan", 100, &EnvironmentNavXYThetaLatFlourish::checkPlanValidity, this);
+
   timeActionCost = new Timing("action_cost", true, Timing::SP_STATS, false);
   //timeActionCostParent = new Timing("action_cost_parent", true, Timing::SP_STATS, false);
   timeFullBodyCollision = new Timing("full_body_collision", true, Timing::SP_STATS, false);
@@ -163,7 +165,6 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   // add the control to the interactive marker
   int_marker.controls.push_back(box_control);
 
-  std::cout << "set possible actions on interserver" << std::endl;
   // create a control which will move the box
   // this control does not contain any markers,
   // which will cause RViz to insert two arrows
@@ -193,15 +194,12 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   control.interaction_mode = visualization_msgs::InteractiveMarkerControl::MOVE_AXIS;
   int_marker.controls.push_back(control);
 
-  std::cout << "binding processMarkerFeedback to interserver" << std::endl;
   // add the interactive marker to our collection &
   // tell the server to call processFeedback() when feedback arrives for it
   interserver->insert(int_marker, boost::bind(&EnvironmentNavXYThetaLatFlourish::processMarkerFeedback, this, _1));
-  std::cout << "done" << std::endl;
 
   // 'commit' changes and send to all clients
   interserver->applyChanges();
-  std::cout << "applied changes" << std::endl;
   //////////////////////////////////////end of interactive marker stuff////////////////////////////////////
 }
 
@@ -231,10 +229,16 @@ bool EnvironmentNavXYThetaLatFlourish::IsWithinMapCell(int X, int Y){
   return (tMap.isInside(index));
 }
 
+// todo: check that only normalized thetas are passed to this function
 bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Theta){
-  std::vector<sbpl_2Dcell_t> footprint;
   //compute continuous pose
   sbpl_xy_theta_pt_t pose = gridToWorld(X, Y, Theta);
+  return IsValidConfiguration(pose);
+}
+
+bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(sbpl_xy_theta_pt_t pose){
+  //Theta = NORMALIZEDISCTHETA(Theta, EnvNAVXYTHETALATCfg.NUMTHETADIRS);
+  std::vector<sbpl_2Dcell_t> footprint;
 
   Eigen::Isometry3f worldToBaseLinkTrafo = Eigen::Isometry3f::Identity();
   Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(pose.x, pose.y, 0, 0, 0, pose.theta, worldToBaseLinkTrafo);
@@ -258,11 +262,6 @@ bool EnvironmentNavXYThetaLatFlourish::IsValidConfiguration(int X, int Y, int Th
     int y = footprint.at(find).y;
 
     if(!IsValidCell(x,y)){
-      std::cout << "invalid cell " << x << ", " << y 
-		<< " for footprint on pose " << pose.x << ", " << pose.y
-		<< ", cell " << X << ", " << Y
-		<< " offsetx " << mapOffsetX
-		<< std::endl;
       return false;
     }
   }
@@ -294,24 +293,22 @@ bool EnvironmentNavXYThetaLatFlourish::wheelCellsValid(Eigen::Isometry3f worldTo
   //std::cout << "wheel coordinates: " << rfWheelCoordinates.transpose() << ", " << lfWheelCoordinates.transpose() << ", " << rrWheelCoordinates.transpose() << ", " << lrWheelCoordinates.transpose() << std::endl;
   //std::cout << "wheel cells: " << rfWheelIndex.transpose() << ", " << lfWheelIndex.transpose() << ", " << rrWheelIndex.transpose() << ", " << lrWheelIndex.transpose() << std::endl;
 
+  // TODO seems to be working, still should check computation of wheel cells
   if(!tMap.isInside(frWheelIndex) || !tMap.isInside(flWheelIndex) 
      || !tMap.isInside(rrWheelIndex) || !tMap.isInside(rlWheelIndex)
-     || IsObstacle(frWheelIndex) || IsObstacle(flWheelIndex)
-     || IsObstacle(rrWheelIndex) || IsObstacle(rlWheelIndex)){
+     || IsCloseToObstacle(frWheelIndex) || IsCloseToObstacle(flWheelIndex)
+     || IsCloseToObstacle(rrWheelIndex) || IsCloseToObstacle(rlWheelIndex)){
     return false;
   }
   return true;
 }
 
-bool EnvironmentNavXYThetaLatFlourish::IsObstacle(int x, int y){
-#if DEBUG
-  //SBPL_FPRINTF(fDeb, "Status of cell %d %d is queried. Its cost=%d\n", x,y,EnvNAVXYTHETALATCfg.Grid2D[x][y]);
-#endif
-  return !tMap.cell(x,y).getTraversable(); 
+bool EnvironmentNavXYThetaLatFlourish::IsCloseToObstacle(int x, int y){
+  return (tMap.cell(x,y).getDistToObstacle() < robotMinSafeDistance); 
 }
 
-bool EnvironmentNavXYThetaLatFlourish::IsObstacle(Eigen::Vector2i index){
-  return IsObstacle(index.x(),index.y()); 
+bool EnvironmentNavXYThetaLatFlourish::IsCloseToObstacle(Eigen::Vector2i index){
+  return IsCloseToObstacle(index.x(),index.y()); 
 }
 
 //returns the stateid if success, and -1 otherwise
@@ -330,7 +327,6 @@ int EnvironmentNavXYThetaLatFlourish::SetStart(double x_m, double y_m, double th
   EnvNAVXYTHETALATHashEntry_t* OutHashEntry;
   if((OutHashEntry = (this->*GetHashEntry)(x, y, theta)) == NULL){
     //have to create a new entry
-    std::cout << "creating hash entry for start " << x << ", " << y << std::endl;
     OutHashEntry = (this->*CreateNewHashEntry)(x, y, theta);
   }
 
@@ -407,14 +403,16 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntr
   // consistent.
   full_body_traversability_cost_infos.push_back(FullBodyTraversabilityCost());
   EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_lookup(X, Y, Theta);
-
+  double x_c, y_c, theta_c;
+  gridToWorld(X, Y, Theta, x_c, y_c, theta_c);
   return he;
 }
 
 EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntry_hash(int X, int Y, int Theta){
   full_body_traversability_cost_infos.push_back(FullBodyTraversabilityCost());
   EnvNAVXYTHETALATHashEntry_t* he = EnvironmentNAVXYTHETALAT::CreateNewHashEntry_hash(X, Y, Theta);
-
+  double x_c, y_c, theta_c;
+  gridToWorld(X, Y, Theta, x_c, y_c, theta_c);
   return he;
 }
 
@@ -698,8 +696,8 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
   std::vector<EnvNAVXYTHETALATAction_t*> actionV;
   std::vector<int> CostV;
   std::vector<int> SuccIDV;
-  int targetx_c, targety_c, targettheta_c;
-  int sourcex_c, sourcey_c, sourcetheta_c;
+  int targetx_d, targety_d, targettheta_d;
+  int sourcex_d, sourcey_d, sourcetheta_d;
 
   //SBPL_PRINTF("checks=%ld\n", checks);
 
@@ -714,7 +712,7 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
     int targetID = stateIDPath->at(pind+1);
 
 #if DEBUG
-    GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
+    GetCoordFromState(sourceID, sourcex_d, sourcey_d, sourcetheta_d);
 #endif
 
 
@@ -728,19 +726,19 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
     int bestsind = -1;
 
 #if DEBUG
-    GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
-    GetCoordFromState(targetID, targetx_c, targety_c, targettheta_c);
-    SBPL_FPRINTF(fDeb, "looking for %d %d %d -> %d %d %d (numofsuccs=%d)\n", sourcex_c, sourcey_c, sourcetheta_c,
-		 targetx_c, targety_c, targettheta_c, (int)SuccIDV.size());
+    GetCoordFromState(sourceID, sourcex_d, sourcey_d, sourcetheta_d);
+    GetCoordFromState(targetID, targetx_d, targety_d, targettheta_d);
+    SBPL_FPRINTF(fDeb, "looking for %d %d %d -> %d %d %d (numofsuccs=%d)\n", sourcex_d, sourcey_d, sourcetheta_d,
+		 targetx_d, targety_d, targettheta_d, (int)SuccIDV.size());
 
 #endif
 
     for(int sind = 0; sind < (int)SuccIDV.size(); sind++){
 
 #if DEBUG
-      int x_c, y_c, theta_c;
-      GetCoordFromState(SuccIDV[sind], x_c, y_c, theta_c);
-      SBPL_FPRINTF(fDeb, "succ: %d %d %d\n", x_c, y_c, theta_c); 
+      int x_d, y_d, theta_d;
+      GetCoordFromState(SuccIDV[sind], x_d, y_d, theta_d);
+      SBPL_FPRINTF(fDeb, "succ: %d %d %d\n", x_d, y_d, theta_d); 
 #endif
 
       if(SuccIDV[sind] == targetID && CostV[sind] <= bestcost){
@@ -749,20 +747,20 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
       }
     }
     if(bestsind == -1){
-      SBPL_ERROR("ERROR: successor not found for transition:\n");
-      GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
-      GetCoordFromState(targetID, targetx_c, targety_c, targettheta_c);
-      SBPL_PRINTF("%d %d %d -> %d %d %d\n", sourcex_c, sourcey_c, sourcetheta_c,
-		  targetx_c, targety_c, targettheta_c); 
+      ROS_ERROR("ERROR: successor not found for transition:\n");
+      GetCoordFromState(sourceID, sourcex_d, sourcey_d, sourcetheta_d);
+      GetCoordFromState(targetID, targetx_d, targety_d, targettheta_d);
+      SBPL_PRINTF("%d %d %d -> %d %d %d\n", sourcex_d, sourcey_d, sourcetheta_d,
+		  targetx_d, targety_d, targettheta_d); 
       throw new SBPL_Exception();
     }
 
     //now push in the actual path
-    int sourcex_c, sourcey_c, sourcetheta_c;
-    GetCoordFromState(sourceID, sourcex_c, sourcey_c, sourcetheta_c);
-    //Eigen::Vector2i index(sourcex_c, sourcey_c);
+    int sourcex_d, sourcey_d, sourcetheta_d;
+    GetCoordFromState(sourceID, sourcex_d, sourcey_d, sourcetheta_d);
+    //Eigen::Vector2i index(sourcex_d, sourcey_d);
     //Eigen::Vector2f pos = tMap.gridToWorld(index);
-    sbpl_xy_theta_pt_t source_xy_theta = gridToWorld(sourcex_c, sourcey_c, sourcetheta_c);
+    sbpl_xy_theta_pt_t source_xy_theta = gridToWorld(sourcex_d, sourcey_d, sourcetheta_d);
 
     //TODO - when there are no motion primitives we should still print source state
     for(int ipind = 0; ipind < ((int)actionV[bestsind]->intermptV.size())-1; ipind++){
@@ -770,6 +768,16 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
       sbpl_xy_theta_pt_t intermpt = actionV[bestsind]->intermptV[ipind];
       intermpt.x += source_xy_theta.x;
       intermpt.y += source_xy_theta.y;
+      
+      //int x_d, y_d, theta_d;
+      //worldToGrid(intermpt.x, intermpt.y, intermpt.theta, x_d, y_d, theta_d);
+      //std::cout << "pushing pose " << intermpt.x << ", " << intermpt.y << ", " << intermpt.theta
+      //		<< " with indices " << x_d << ", " << y_d << ", " << theta_d;
+      //if(!IsValidConfiguration(x_d, y_d, theta_d)){
+      //	std::cout << ". It's invalid!" << std::endl;
+      //}else{
+      //	std::cout << std::endl;
+      //}
 
       //store
       xythetaPath->push_back(intermpt);
@@ -930,7 +938,6 @@ int EnvironmentNavXYThetaLatFlourish::getFreespaceCost(int deltaX, int deltaY, i
   }
   return hfs;
 }
-
 
 void EnvironmentNavXYThetaLatFlourish::EnsureHeuristicsUpdated(bool bGoalHeuristics){
   std::cerr << "attempting to ensure heuristics are updated" << std::endl;
@@ -1252,19 +1259,40 @@ void EnvironmentNavXYThetaLatFlourish::processMarkerFeedback(const visualization
   nontrav_endtheta_array_publisher.publish(endthetanontravmsg);
 }
 
+void EnvironmentNavXYThetaLatFlourish::checkPlanValidity(const nav_msgs::Path& plan ){
+  for(size_t i = 0; i < plan.poses.size(); ++i){
+    geometry_msgs::Pose pose = plan.poses[i].pose;
+    int x_d, y_d, theta_d;
+    double theta_c = Ais3dTools::TransformationRepresentation::getYawFromQuaternion(pose.orientation.w, 
+										    pose.orientation.x,
+										    pose.orientation.y,
+										    pose.orientation.z);
+    worldToGrid(plan.poses[i].pose.position.x, plan.poses[i].pose.position.y, theta_c, x_d, y_d, theta_d);
+    std::cout << "pose " << plan.poses[i].pose.position.x << ", " << plan.poses[i].pose.position.y << ", " << theta_c
+	      << " with indices " << x_d << ", " << y_d << ", " << theta_d;
+    if(!IsValidConfiguration(x_d, y_d, theta_d)){
+      std::cout << " is invalid" << std::endl;
+    }else{
+      std::cout << std::endl;
+    }
+  }
+}
+
+
 int EnvironmentNavXYThetaLatFlourish::GetCellCost(int X, int Y, int Theta){
   timeConfigCollisionCheck->start();
   ScopeExit se(boost::bind(&Timing::end, timeConfigCollisionCheck));
-  //TODO: also check other footprint cells for height (done in get action cost, might be more reasonable there if intersecting cells are correct)
-  int theta = NORMALIZEDISCTHETA(Theta, NAVXYTHETALAT_THETADIRS);
-  sbpl_xy_theta_pt_t coords = gridToWorld(X, Y, Theta);
-  Eigen::Isometry3f worldToBaseLinkTrafo = Eigen::Isometry3f::Identity();
-  Ais3dTools::TransformationRepresentation::getMatrixFromTranslationAndEuler<Eigen::Isometry3f, float>(coords.x, coords.y, 0, 0, 0, coords.theta, worldToBaseLinkTrafo);
+  //TODO: footprint cells are checked several times, in IsValidConfiguration and in getactioncost
+  //int theta = NORMALIZEDISCTHETA(Theta, NAVXYTHETALAT_THETADIRS);
+  //sbpl_xy_theta_pt_t coords = gridToWorld(X, Y, Theta);
 
+  //std::cout << "configuration " << coords.x << ", " << coords.y << ", " << coords.theta;
   // check if position of the robot centre and the wheel cells are inside the map, the centre cell is not too high and the wheel cells are traversable
-  if(!IsValidCell(X,Y) || !wheelCellsValid(worldToBaseLinkTrafo)){
+  if(!IsValidConfiguration(X,Y,Theta)){
+    //std::cout << " invalid" << std::endl;
     return INFINITECOST;
   }
+  //std::cout << std::endl;
 
   return 1;
 
@@ -1306,7 +1334,8 @@ int EnvironmentNavXYThetaLatFlourish::GetActionCost(int SourceX, int SourceY, in
     interm3Dcell = action->interm3DcellsV.at(i);
     interm3Dcell.x = interm3Dcell.x + SourceX;
     interm3Dcell.y = interm3Dcell.y + SourceY;
-    int intermCost = GetCellCost(interm3Dcell.x, interm3Dcell.y, interm3Dcell.theta);
+    //std::cout << "theta = " << interm3Dcell.theta << std::endl;
+    int intermCost = GetCellCost(interm3Dcell.x, interm3Dcell.y, interm3Dcell.theta); //TODO check if thetas in interm3dcellsV are already normalized
     // check if cell between start and end position is inside the map
     if(intermCost == INFINITECOST){
       return INFINITECOST;
@@ -1479,6 +1508,7 @@ void EnvironmentNavXYThetaLatFlourish::worldToGrid(sbpl_xy_theta_pt_t pose, int&
   x = CONTXY2DISC(pose.x - offset.x(), tMap.getResolution());
   y = CONTXY2DISC(pose.y - offset.y(), tMap.getResolution());
   theta = ContTheta2Disc(pose.theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  theta = NORMALIZEDISCTHETA(theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 }
 
 void EnvironmentNavXYThetaLatFlourish::worldToGrid(double x_c, double y_c, double theta_c, int& x_d, int& y_d, int& theta) const
@@ -1488,6 +1518,7 @@ void EnvironmentNavXYThetaLatFlourish::worldToGrid(double x_c, double y_c, doubl
   x_d = CONTXY2DISC(x_c - offset.x(), tMap.getResolution());
   y_d = CONTXY2DISC(y_c - offset.y(), tMap.getResolution());
   theta = ContTheta2Disc(theta_c, EnvNAVXYTHETALATCfg.NumThetaDirs);
+  theta = NORMALIZEDISCTHETA(theta, EnvNAVXYTHETALATCfg.NumThetaDirs);
 }
 
 void EnvironmentNavXYThetaLatFlourish::world2dToGrid(double x_c, double y_c, int& x_d, int& y_d) const

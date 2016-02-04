@@ -13,6 +13,7 @@
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 #include "timing/timing.h"
 
+#include <nav_msgs/Path.h>
 #include <interactive_markers/interactive_marker_server.h>
 
 /// Planning environment for x, y, theta planning with 2.5d collision checking for the BoniRob.
@@ -68,9 +69,11 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   bool IsWithinMapCell(int X, int Y);
   // check if all cells in the footprint given the robot is at pose x, y, theta are valid. Uses isValidCell.
   bool IsValidConfiguration(int X, int Y, int Theta);
+  // check if all cells in the footprint given the robot is at pose are valid. Uses IsValidCell.
+  bool IsValidConfiguration(sbpl_xy_theta_pt_t pose);
   // check if the traversable map says cell x, y is traversable or not
-  bool IsObstacle(int x, int y);
-  bool IsObstacle(Eigen::Vector2i index);
+  bool IsCloseToObstacle(int x, int y);
+  bool IsCloseToObstacle(Eigen::Vector2i index);
   double getMapOffsetX() { return mapOffsetX; }
   double getMapOffsetY() { return mapOffsetY; }
   const Ais3dTools::TraversableMap& traversableMap() const { return tMap; }
@@ -136,7 +139,8 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   void publish_wheel_cells(std::vector<Eigen::Vector2i> wheelCells);
   void publish_traversable_map();
   void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
-
+  void checkPlanValidity(const nav_msgs::Path& plan);
+  
   int count;
   int past;
 
@@ -180,6 +184,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   //Eigen::Vector2i continuousXYToDiscrete(Eigen::Vector2f xy_c) const;
 
   //sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta) const;
+  // functions to convert from grid indices to world coordinates (cell center)
   sbpl_xy_theta_pt_t gridToWorld(int x, int y, int theta) const;
   void gridToWorld(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c) const;
   void grid2dToWorld(int x_d, int y_d, double& x_c, double& y_c) const;
@@ -237,6 +242,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   ros::Publisher action_array_publisher;
   ros::Publisher endtheta_array_publisher;
   ros::Publisher nontrav_endtheta_array_publisher;
+  //ros::Subscriber plan_subscriber;
   interactive_markers::InteractiveMarkerServer* interserver;
 };
 
