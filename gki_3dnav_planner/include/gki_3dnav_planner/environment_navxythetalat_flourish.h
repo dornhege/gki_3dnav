@@ -153,6 +153,8 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
     }
   };
 
+
+  bool wheelCellsValid(Eigen::Isometry3f worldToBaseLink);
   
   // compute the cost of state x, y, theta 
   // if a wheel position is outside the map: infty
@@ -208,7 +210,8 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   double mapOffsetX;
   double mapOffsetY;
   Ais3dTools::TraversableMap tMap;
-  Eigen::Isometry3f baseLinkTofrWheel, baseLinkToflWheel, baseLinkTorrWheel, baseLinkTorlWheel;
+  //Eigen::Isometry3f baseLinkTofrWheel, baseLinkToflWheel, baseLinkTorrWheel, baseLinkTorlWheel;
+  Eigen::Vector3f frWheelInRobotCoordinates, flWheelInRobotCoordinates, rrWheelInRobotCoordinates, rlWheelInRobotCoordinates;
 
   Timing* timeActionCost;
   //Timing* timeActionCostParent;
