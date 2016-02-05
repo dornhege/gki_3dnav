@@ -132,7 +132,8 @@ bool SBPLXYThetaPlanner::sampleValidPoses(gki_3dnav_planner::SampleValidPoses::R
         gki_3dnav_planner::SampleValidPoses::Response & resp)
 {
     geometry_msgs::Point min, max;
-    env_->getExtents(min.x, max.x, min.y, max.y);
+    if(!env_->getExtents(min.x, max.x, min.y, max.y))
+        return false;
 
     geometry_msgs::Pose pose;
     resp.poses.header.frame_id = getPlanningFrame();
