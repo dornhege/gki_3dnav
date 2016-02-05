@@ -180,6 +180,14 @@ bool EnvironmentNavXYThetaLatMoveit::getExtents(double minX, double maxX, double
     return true;
 }
 
+void EnvironmentNavXYThetaLatMoveit::updateForPlanRequest()
+{
+    EnvironmentNavXYThetaLatGeneric::updateForPlanRequest();
+    clear_full_body_collision_infos();
+    update_planning_scene();
+    publish_planning_scene();
+}
+
 // PlanningScene handling
 
 void EnvironmentNavXYThetaLatMoveit::update_planning_scene()

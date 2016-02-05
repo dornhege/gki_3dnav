@@ -122,9 +122,9 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNavXYThetaLatGeneric
         void ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath,
                 std::vector<sbpl_xy_theta_pt_t>* xythetaPath);
 
+        virtual void updateForPlanRequest();
 
         virtual void clear_full_body_collision_infos();
-        virtual void publish_expanded_states();
 
         /// Update the planning scene directly from the running MoveGroup instance.
         virtual void update_planning_scene();

@@ -11,14 +11,39 @@
 namespace sbpl_xytheta_planner
 {
 
+XYThetaStateChangeQuery::XYThetaStateChangeQuery(EnvironmentNavXYThetaLatGeneric* env,
+        const std::vector<nav2dcell_t> & changedcells) : env_(env)
+{
+    for(std::vector<nav2dcell_t>::const_iterator it = changedcells.begin(); it != changedcells.end(); ++it) {
+        nav2dcell_t cell;
+        cell.x = it->x;
+        cell.y = it->y;
+        changedcells_.push_back(cell);
+    }
+}
+
+const std::vector<int> * XYThetaStateChangeQuery::getPredecessors() const
+{
+    if(predsOfChangedCells_.empty() && !changedcells_.empty())
+        env_->GetPredsofChangedEdges(&changedcells_, &predsOfChangedCells_);
+    return &predsOfChangedCells_;
+}
+
+const std::vector<int> * XYThetaStateChangeQuery::getSuccessors() const
+{
+    if(succsOfChangedCells_.empty() && !changedcells_.empty())
+        env_->GetSuccsofChangedEdges(&changedcells_, &succsOfChangedCells_);
+    return &succsOfChangedCells_;
+}
+
 SBPLXYThetaPlanner::SBPLXYThetaPlanner() :
-        initialized_(false), costmap_ros_(NULL), forward_search_(false), initial_epsilon_(0),
-        env_(NULL), force_scratch_limit_(0), planner_(NULL), allocated_time_(0)
+    initialized_(false), costmap_ros_(NULL), forward_search_(false), initial_epsilon_(0),
+    env_(NULL), force_scratch_limit_(0), planner_(NULL), allocated_time_(0)
 {
 }
 
 SBPLXYThetaPlanner::SBPLXYThetaPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros) :
-        initialized_(false), costmap_ros_(NULL)
+    initialized_(false), costmap_ros_(NULL)
 {
     initialize(name, costmap_ros);
 }
@@ -29,13 +54,12 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
         return;
 
     private_nh_ = new ros::NodeHandle("~/" + name);
-    ros::NodeHandle nh(name);
-
     costmap_ros_ = costmap_ros;
 
     ROS_INFO("Planner Name is %s", name.c_str());
 
-    private_nh_->param("planner_type", planner_type_, std::string("ARAPlanner"));
+    std::string planner_type;
+    private_nh_->param("planner_type", planner_type, std::string("ARAPlanner"));
     private_nh_->param("allocated_time", allocated_time_, 10.0);
     private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
     private_nh_->param("forward_search", forward_search_, bool(false));
@@ -56,20 +80,20 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
         exit(1);
     }
 
-    std::vector<sbpl_2Dpt_t> perimeterptsV;
+    std::vector<sbpl_2Dpt_t> footprintPoints;
     std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
-    perimeterptsV.reserve(footprint.size());
-    for(size_t ii(0); ii < footprint.size(); ++ii) {
+    footprintPoints.reserve(footprint.size());
+    for(size_t i = 0; i < footprint.size(); ++i) {
         sbpl_2Dpt_t pt;
-        pt.x = footprint[ii].x;
-        pt.y = footprint[ii].y;
-        perimeterptsV.push_back(pt);
+        pt.x = footprint[i].x;
+        pt.y = footprint[i].y;
+        footprintPoints.push_back(pt);
     }
 
     bool ret = true;
     try {
         double timeToTurn45Degs = M_PI/4.0/rot_vel;
-        ret = initializeEnvironment(perimeterptsV, trans_vel, timeToTurn45Degs, motion_primitive_filename);
+        ret = initializeEnvironment(footprintPoints, trans_vel, timeToTurn45Degs, motion_primitive_filename);
     } catch(SBPL_Exception& e) {
         ROS_ERROR("SBPL encountered a fatal exception initializing the environment!");
         ret = false;
@@ -80,15 +104,15 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     }
 
     // Search planner creation
-    if ("ARAPlanner" == planner_type_) {
+    if(planner_type == "ARAPlanner") {
         ROS_INFO("Planning with ARA*");
         planner_ = new ARAPlanner(env_, forward_search_);
         dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
-    } else if ("ADPlanner" == planner_type_) {
+    } else if(planner_type == "ADPlanner") {
         ROS_INFO("Planning with AD*");
         planner_ = new ADPlanner(env_, forward_search_);
     } else {
-        ROS_FATAL("Unknown planner type: %s (supported: ARAPlanner or ADPlanner)", planner_type_.c_str());
+        ROS_FATAL("Unknown planner type: %s (supported: ARAPlanner or ADPlanner)", planner_type.c_str());
         exit(1);
     }
 
@@ -171,6 +195,7 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
         return false;
     }
     env_->updateForPlanRequest();
+
     ROS_INFO("Planning frame is %s", getPlanningFrame().c_str());
 
     geometry_msgs::PoseStamped start = startPose;
@@ -214,15 +239,29 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
         return false;
     }
 
-    planner_->force_planning_from_scratch();
-    // TODO also/instead update planner with changed world/states
+    // Test for dynamic updates
+    XYThetaStateChangeQuery* scq = updateForPlanRequest();  // FIXME must this happen before SetStart to
+    // determine that start is valid? Or does updateForPlanRequest need a current start?
+    if(scq == NULL) {
+        planner_->force_planning_from_scratch();
+    } else {
+        try {
+            if(!scq->changedcells_.empty()) {
+                planner_->costs_changed(*scq);
+            }
+            if(scq->changedcells_.size() >= force_scratch_limit_)
+                planner_->force_planning_from_scratch();
+        } catch(SBPL_Exception& e) {
+            ROS_ERROR("SBPL failed to handle StateChangeQuery");
+            return false;
+        }
+        delete scq;
+    }
 
     ROS_INFO("Start state Heur: %d", env_->GetGoalHeuristic(startId));
-
     ROS_DEBUG("allocated time: %.1f, initial eps: %.2f\n", allocated_time_, initial_epsilon_);
     planner_->set_initialsolution_eps(initial_epsilon_);
     planner_->set_search_mode(false);   // TODO
-
 
     ROS_DEBUG("Running planner");
     std::vector<int> solution_stateIDs;

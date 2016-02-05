@@ -13,7 +13,7 @@
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
 
-EnvironmentNavXYThetaLatGeneric::EnvironmentNavXYThetaLatGeneric(ros::NodeHandle & nhPriv)
+EnvironmentNavXYThetaLatGeneric::EnvironmentNavXYThetaLatGeneric(ros::NodeHandle & nhPriv) : nhPriv_(nhPriv)
 {
     std::string freespace_heuristic_costmap_file;
     nhPriv.getParam("freespace_heuristic_costmap", freespace_heuristic_costmap_file);
@@ -46,6 +46,12 @@ bool EnvironmentNavXYThetaLatGeneric::useFreespaceHeuristic(bool on)
         ROS_ERROR("useFreespaceHeuristic requested on, but no freespace_heuristic_costmap loaded.");
         useFreespaceHeuristic_ = false;
     }
+}
+
+void EnvironmentNavXYThetaLatGeneric::updateForPlanRequest()
+{
+    nhPriv_.getParam("use_freespace_heuristic", useFreespaceHeuristic_);
+    useFreespaceHeuristic(useFreespaceHeuristic_);
 }
 
 int EnvironmentNavXYThetaLatGeneric::GetFromToHeuristic(int FromStateID, int ToStateID)

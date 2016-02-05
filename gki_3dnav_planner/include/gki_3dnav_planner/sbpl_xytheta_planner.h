@@ -15,7 +15,22 @@
 namespace sbpl_xytheta_planner
 {
 
-class SBPLXYThetaPlanner: public nav_core::BaseGlobalPlanner
+class XYThetaStateChangeQuery : public StateChangeQuery
+{
+public:
+    XYThetaStateChangeQuery(EnvironmentNavXYThetaLatGeneric* env, const std::vector<nav2dcell_t> & changedcells);
+
+    virtual const std::vector<int> * getPredecessors() const;
+    virtual const std::vector<int> * getSuccessors() const;
+
+public:
+    EnvironmentNavXYThetaLatGeneric* env_;
+    std::vector<nav2dcell_t> changedcells_;
+    mutable std::vector<int> predsOfChangedCells_;
+    mutable std::vector<int> succsOfChangedCells_;
+};
+
+class SBPLXYThetaPlanner : public nav_core::BaseGlobalPlanner
 {
 public:
     SBPLXYThetaPlanner();
@@ -45,24 +60,33 @@ protected:
     virtual bool initializeEnvironment(const std::vector<sbpl_2Dpt_t> & footprint,
             double trans_vel, double timeToTurn45Degs, const std::string & motion_primitive_filename) = 0;
 
+    /// Update internal representation of the planner for a plan request.
+    /**
+     * Called, whenever makePlan is called. Start and Goal state have already been set and
+     * env_->updateForPlanRequest() has also been called.
+     *
+     * This object will be deleted after the query.
+     *
+     * If possible should return a XYThetaStateChangeQuery that can be passed to the search algorithm.
+     * If NULL is returned, the planner will plan from scratch.
+     */
+    virtual XYThetaStateChangeQuery* updateForPlanRequest() { return NULL; }
 
-private:
     virtual void publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal);
     virtual void publish_expansions();
 
-private:
+protected:
     bool initialized_;
     ros::NodeHandle* private_nh_;
 
     SBPLPlanner* planner_;
     EnvironmentNavXYThetaLatGeneric* env_;
 
-    std::string planner_type_;  ///< ARAPlanner or ADPlanner
     double allocated_time_;
     double initial_epsilon_;
 
     bool forward_search_;       /// TODO check
-    int force_scratch_limit_;   /// TODO check
+    int force_scratch_limit_;   ///< if the number of changed cells is >= this, planning from scratch will happen
 
     costmap_2d::Costmap2DROS* costmap_ros_;
 

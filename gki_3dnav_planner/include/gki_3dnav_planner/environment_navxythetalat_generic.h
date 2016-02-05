@@ -44,7 +44,8 @@ class EnvironmentNavXYThetaLatGeneric : public EnvironmentNAVXYTHETALAT
         virtual bool getExtents(double minX, double maxX, double minY, double maxY) = 0;
 
         /// Update the internal representation to be current for a plan request.
-        virtual void updateForPlanRequest() { }
+        /// Called, whenever makePlan is called.
+        virtual void updateForPlanRequest();
 
         // heuristic handling
         virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
@@ -70,6 +71,8 @@ class EnvironmentNavXYThetaLatGeneric : public EnvironmentNAVXYTHETALAT
         virtual void printTimingStats();
 
     protected:
+        ros::NodeHandle nhPriv_;
+
         freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
         bool useFreespaceHeuristic_;
 
