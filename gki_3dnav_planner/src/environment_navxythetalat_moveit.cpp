@@ -37,7 +37,7 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
         freespace_heuristic_costmap = NULL;
     } else {
         freespace_heuristic_costmap = new freespace_mechanism_heuristic::HeuristicCostMap(
-                freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapMaxCost);
+                freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapExpandEuclideanAppend);
     }
 
     update_planning_scene();
@@ -47,6 +47,7 @@ EnvironmentNavXYThetaLatMoveit::EnvironmentNavXYThetaLatMoveit(ros::NodeHandle &
 
     timeActionCost = new Timing("action_cost", true, Timing::SP_STATS, false);
     timeActionCostParent = new Timing("action_cost_parent", true, Timing::SP_STATS, false);
+    timeFreespace = new Timing("freespace_heuristic", true, Timing::SP_STATS, false);
     timeFullBodyCollision = new Timing("full_body_collision", true, Timing::SP_STATS, false);
     time3dCheck = new Timing("3d_check", true, Timing::SP_STATS, false);
     timeHeuristic = new Timing("heuristic", true, Timing::SP_STATS, false);
@@ -56,6 +57,7 @@ EnvironmentNavXYThetaLatMoveit::~EnvironmentNavXYThetaLatMoveit()
 {
     delete timeActionCost;
     delete timeActionCostParent;
+    delete timeFreespace;
     delete timeFullBodyCollision;
     delete time3dCheck;
     delete timeHeuristic;
@@ -341,6 +343,11 @@ bool EnvironmentNavXYThetaLatMoveit::in_full_body_collision(EnvNAVXYTHETALATHash
 {
     timeFullBodyCollision->start();
     ScopeExit se(boost::bind(&Timing::end, timeFullBodyCollision));
+    // TODO flag that we are allowed to do that by cost_possibly_circumscribed_cost
+    // must be correctly set
+    // TODO can do that in costmap as this is applicability and not cost -> better cost resolution
+    if(EnvNAVXYTHETALATCfg.Grid2D[state->X][state->Y] < EnvNAVXYTHETALATCfg.cost_possibly_circumscribed_thresh)
+        return false;
     return get_full_body_collision_info(state).collision;
 }
 
@@ -384,19 +391,9 @@ int EnvironmentNavXYThetaLatMoveit::GetFromToHeuristic(int FromStateID, int ToSt
     int dx = toX - fromX;
     int dy = toY - fromY;
 
-    int hfs = 0;
-    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
-        hfs = freespace_heuristic_costmap->getCost(dx, dy, fromTheta, toTheta);
-
-    count++;
-    if(count % 1000 == 0) {
-        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
-                hfs, heur,
-                count, past, count - past, (double)(count-past)/count*100.0);
-    }
+    int hfs = getFreespaceCost(dx, dy, fromTheta, toTheta);
     if(hfs > heur)
         return hfs;
-    past++;
     return heur;
 }
 
@@ -415,19 +412,9 @@ int EnvironmentNavXYThetaLatMoveit::GetStartHeuristic(int stateID)
     dy = -dy;
     int endTh = theta;
 
-    int hfs = 0;
-    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
-        hfs = freespace_heuristic_costmap->getCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
-
-    count++;
-    if(count % 1000 == 0) {
-        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
-                hfs, heur,
-                count, past, count - past, (double)(count-past)/count*100.0);
-    }
+    int hfs = getFreespaceCost(dx, dy, EnvNAVXYTHETALATCfg.StartTheta, endTh);
     if(hfs > heur)
         return hfs;
-    past++;
     return heur;
 }
 
@@ -461,26 +448,64 @@ int EnvironmentNavXYThetaLatMoveit::GetGoalHeuristic(int stateID)
     int dy = EnvNAVXYTHETALATCfg.EndY_c - y;
     int startTh = theta;
 
-    int hfs = 0;
-    if(useFreespaceHeuristic_ && freespace_heuristic_costmap)
-        hfs = freespace_heuristic_costmap->getCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
-
-    count++;
-    if(count % 1000 == 0) {
-        printf("Cur: %d Old: %d, Total Heur: %d, Old used: %d, New used: %d, impr %.2f\n", 
-                hfs, heur,
-                count, past, count - past, (double)(count-past)/count*100.0);
-    }
+    int hfs = getFreespaceCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
     if(hfs > heur)
         return hfs;
-    past++;
     return heur;
 }
+
+int EnvironmentNavXYThetaLatMoveit::getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end, int depth)
+{
+    if(depth == 0)
+        timeFreespace->start();
+
+    if(depth >= 6) {
+        ROS_WARN_THROTTLE(1.0, "Freespace Heuristic depth: %d", depth);
+    }
+    int hfs = 0;
+    if(useFreespaceHeuristic_ && freespace_heuristic_costmap){
+        hfs = freespace_heuristic_costmap->getCost(deltaX, deltaY, theta_start, theta_end);
+        //std::cout << "got first cost " << hfs << std::endl;
+        if(hfs == INFINITECOST){
+            // figure out cell in freespace_heuristic_costmap in the direction of deltaX, deltaY
+            int maxdx = freespace_heuristic_costmap->getWidth()/2-2;
+            int maxdy = freespace_heuristic_costmap->getHeight()/2-2;
+            // y coordinate corresponding to maxdx in direction of deltaX, deltaY, and vice versa
+            int yForMaxdx = deltaX==0? (deltaY>0?maxdy:-maxdy) : (maxdx*deltaY)/abs(deltaX);
+            int xForMaxdy = deltaY==0? (deltaX>0?maxdx:-maxdx) : (maxdy*deltaX)/abs(deltaY);
+            int deltaXInMap = deltaX >= 0? maxdx : -maxdx;
+            int deltaYInMap = yForMaxdx;
+            //std::cout << "step 1: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
+            if(abs(deltaYInMap) > maxdy){
+                deltaXInMap = xForMaxdy;
+                deltaYInMap = deltaY >= 0? maxdy : -maxdy;
+                ROS_ASSERT(abs(xForMaxdy) <= maxdx);
+            }
+            //std::cout << "step 2: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
+            int hdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, 0)
+                + getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, 0, theta_end, depth + 1);
+            for(size_t i = 1; i < EnvNAVXYTHETALATCfg.NumThetaDirs; ++i){
+                int hnewdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, i)
+                    + getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, i, theta_end, depth + 1);
+                if(hnewdelta < hdelta){
+                    hdelta = hnewdelta;
+                }
+            }
+            hfs = hdelta;
+        }
+    }
+
+    if(depth == 0)
+        timeFreespace->end();
+    return hfs;
+}
+
 
 void EnvironmentNavXYThetaLatMoveit::resetTimingStats()
 {
     timeActionCost->getStats().reset();
     timeActionCostParent->getStats().reset();
+    timeFreespace->getStats().reset();
     timeFullBodyCollision->getStats().reset();
     time3dCheck->getStats().reset();
     timeHeuristic->getStats().reset();
@@ -490,6 +515,7 @@ void EnvironmentNavXYThetaLatMoveit::printTimingStats()
 {
     timeActionCost->printStats(true);
     timeActionCostParent->printStats(true);
+    timeFreespace->printStats(true);
     timeFullBodyCollision->printStats(true);
     time3dCheck->printStats(true);
     timeHeuristic->printStats(true);

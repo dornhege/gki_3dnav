@@ -18,11 +18,22 @@ class HeuristicCostMap
         {
             OutOfMapMaxCost,        ///< use max value of map
             OutOfMapInfiniteCost,   ///< use INFINITECOST
-            OutOfMapAssert,         ///< Assert, i.e. should not happen
+            OutOfMapAssert,         ///< Assert, i.e., should not happen
+            OutOfMapExpandEuclideanPrepend,    ///< compute the out of map part by prepending euclidean distance query
+            OutOfMapExpandEuclideanAppend,     ///< compute the out of map part by appending euclidean distance query
+            OutOfMapZero,           ///< if out of map, return 0
         };
 
-        HeuristicCostMap(unsigned int height, unsigned int width, unsigned int numThetaDirs, bool allocateMaps,
-                enum OutOfMapBehavior outOfMapBehaviour);
+        /**
+         * Construct empty HeuristicCostMap.
+         *
+         * \param [in] transVel translational velocity in cells/s
+         * \param [in] rotVel rotational velocity in rad/s
+         */
+        HeuristicCostMap(unsigned int height, unsigned int width, unsigned int numThetaDirs, 
+                double transVel, double rotVel,
+                bool allocateMaps, enum OutOfMapBehavior outOfMapBehaviour);
+
         HeuristicCostMap(const std::string & mapfile, enum OutOfMapBehavior outOfMapBehaviour);
         ~HeuristicCostMap();
 
@@ -34,14 +45,27 @@ class HeuristicCostMap
         /// Save costmap as PPM.
         /**
          * \param [in] endTheta end pose theta for costmap image. If < 0, chooses min cost over all end thetas
+         * \param [in] expansion expand the costmap image to write and query beyond the borders
          */
-        bool saveCostMapImage(const std::string & ppmfile, int startTheta, int endTheta) const;
+        bool saveCostMapImage(const std::string & ppmfile, int startTheta, int endTheta, int expansion = 0) const;
 
         void updateMaxCost();
 
         unsigned int getHeight() const { return height_; }
         unsigned int getWidth() const { return width_; }
         unsigned int getNumThetaDirs() const { return numThetaDirs_; }
+
+        /// Compute the intersecting border coordinate for a (dx, dy) query that goes outside of the map
+        void computeBorderCell(int dx, int dy, int & border_x, int & border_y) const;
+
+        /// Compute the euclidean cost for a query.
+        /**
+         * Computed as the cost for a SBPL motion primitve as 1000 * max time for linear or angular movement.
+         * Linear movement between dx and dy, and angular movement between startTheta and endTheta are
+         * considered independent.
+         */
+        unsigned int getEuclideanCost(int dx, int dy, int startTheta, int endTheta) const;
+
     protected:
         void allocateMaps();
         void deallocateMaps();
@@ -50,9 +74,12 @@ class HeuristicCostMap
         unsigned int*** getCostMap(unsigned int theta) { return costmaps_[theta]; }
 
     protected:
-        unsigned int height_;
-        unsigned int width_;
+        int height_;
+        int width_;
         unsigned int numThetaDirs_;
+        double tv_;     ///< tv in ms/
+        double rv_;     ///< rv in rad/s
+
         enum OutOfMapBehavior outOfMapBehaviour_;
 
         /// One costmap for each theta in numThetaDirs.

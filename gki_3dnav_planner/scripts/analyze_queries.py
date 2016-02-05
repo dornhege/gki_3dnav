@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 def time_to_first(run_stats):
     return run_stats[0]['time']
-time_to_first.min = 0
+time_to_first.min = -0.5
 
 def final_eps_reached(run_stats):
     eps = run_stats[-1]['eps']
@@ -34,15 +34,17 @@ def scatter_pairs(data, fn):
     entries = []
     first = True
     for k, v in sorted(data.iteritems()):
+        print "Processing", k
         for i, run in enumerate(v):
             if first:
-                entries.append([fn(run)])
+                entries.append([fn(run["planner_stats"])])
             else:
-                entries[i].append(fn(run))
+                entries[i].append(fn(run["planner_stats"]))
         first = False
     return entries
 
 def make_scatter_plot(ax, data, fn):
+    print "make_scatter_plot for %s" % fn.__name__
     sp = scatter_pairs(data, fn)
     try:
         ax.set_xlim(fn.min, fn.max)
@@ -58,6 +60,7 @@ def make_scatter_plot(ax, data, fn):
     ax.set_title(fn.__name__)
 
 def make_time_histogram(ax, data, fn):
+    print "make_time_histogram for %s" % fn.__name__
     try:
         ax.set_xlim(fn.min, fn.max)
         ax.set_ylim(0.0, 1.05)
@@ -65,8 +68,9 @@ def make_time_histogram(ax, data, fn):
         pass
     data_time_points = {}
     for k, v in data.iteritems():
+        print "Processing", k
         for run in v:
-            time_point = fn(run)
+            time_point = fn(run["planner_stats"])
             if not k in data_time_points:
                 data_time_points[k] = [time_point]
             else:

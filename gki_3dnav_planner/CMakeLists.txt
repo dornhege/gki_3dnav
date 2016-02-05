@@ -103,7 +103,7 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES gki_3dnav_planner flourish_planner
+  LIBRARIES sbpl_xytheta_planner gki_3dnav_planner flourish_planner
   CATKIN_DEPENDS moveit_msgs nav_core nav_msgs std_msgs std_srvs visualization_msgs
   DEPENDS system_lib
 )
@@ -112,19 +112,32 @@ catkin_package(
 ## Build ##
 ###########
 
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
 include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 add_definitions(${EIGEN_DEFINITIONS})
 
-## Declare a cpp library
+add_library(sbpl_xytheta_planner
+    src/sbpl_xytheta_planner.cpp
+    src/environment_navxythetalat_generic.cpp
+)
+target_link_libraries(sbpl_xytheta_planner
+    ${catkin_LIBRARIES}
+    ${SBPL_LIBRARIES} 
+    ${Boost_LIBRARIES})
+
 add_library(gki_3dnav_planner
     src/environment_xyt_3d_collisions.cpp
     src/environment_navxythetalat_moveit.cpp
     src/3dnav_planner.cpp
+)
+add_dependencies(gki_3dnav_planner gki_3dnav_planner_generate_messages_cpp)
+target_link_libraries(gki_3dnav_planner
+	${catkin_LIBRARIES}
+	${SBPL_LIBRARIES} 
+	${Boost_LIBRARIES}
+    sbpl_xytheta_planner
 )
 
 add_library(flourish_planner
@@ -132,6 +145,13 @@ add_library(flourish_planner
     src/environment_navxythetalat_flourish.cpp
     src/flourish_planner.cpp
 )
+
+target_link_libraries(flourish_planner
+	${catkin_LIBRARIES}
+	${SBPL_LIBRARIES} 
+	${Boost_LIBRARIES}
+)
+
 
 add_executable(sample_valid_poses
     src/sample_valid_poses.cpp)
@@ -146,31 +166,12 @@ target_link_libraries(evaluate_pose_queries
     yaml-cpp)
 add_dependencies(evaluate_pose_queries gki_3dnav_planner_generate_messages_cpp)
 
-## Declare a cpp executable
 add_executable(visual_path_planning_node src/VisualPathPlannerNode.cpp)
-
-## Add cmake target dependencies of the executable/library
-## as an example, message headers may need to be generated before nodes
-add_dependencies(gki_3dnav_planner gki_3dnav_planner_generate_messages_cpp)
-#add_dependencies(visual_path_planning_node full_body_nav_msgs_generate_messages_cpp)
-
-## Specify libraries to link a library or executable target against
-target_link_libraries(gki_3dnav_planner
-	${catkin_LIBRARIES}
-	${SBPL_LIBRARIES} 
-	${Boost_LIBRARIES}
-)
-
-
-target_link_libraries(flourish_planner
-	${catkin_LIBRARIES}
-	${SBPL_LIBRARIES} 
-	${Boost_LIBRARIES}
-)
 target_link_libraries(visual_path_planning_node
 	${catkin_LIBRARIES}
 	${Boost_LIBRARIES}
 )
+
 
 
 #############

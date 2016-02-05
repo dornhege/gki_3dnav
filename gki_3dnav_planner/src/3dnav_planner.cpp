@@ -162,6 +162,14 @@ void GKI3dNavPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
         cost_possibly_circumscribed_tresh = inflation_layer->computeCost(
                 costmap_ros_->getLayeredCostmap()->getCircumscribedRadius() / 
                 costmap_ros_->getCostmap()->getResolution());
+
+        // TODO footprint should come dynamically from moveit state (+ need extra checks that it's updatable)
+        // for AD* will make stuff immovable (force_scratch)
+        cost_possibly_circumscribed_tresh = inflation_layer->computeCost(
+                0.95 /
+                costmap_ros_->getCostmap()->getResolution());
+        ROS_INFO("With radius circumscribed %f - cost %d (SBPL %d)", 0.95, cost_possibly_circumscribed_tresh,
+                costMapCostToSBPLCost(cost_possibly_circumscribed_tresh));
         ROS_INFO("Radii: inscribed: %f circumscribed: %f",
                 costmap_ros_->getLayeredCostmap()->getInscribedRadius(),
                 costmap_ros_->getLayeredCostmap()->getCircumscribedRadius());
@@ -264,7 +272,7 @@ std::string GKI3dNavPlanner::getPlanningFrame() const
 //This rescales the costmap according to a rosparam which sets the obstacle cost
 unsigned char GKI3dNavPlanner::costMapCostToSBPLCost(unsigned char newcost)
 {
-    if (newcost == costmap_2d::LETHAL_OBSTACLE)
+    if (newcost >= costmap_2d::LETHAL_OBSTACLE)     // lethal and no_information are lethal
         return lethal_obstacle_;
     else if (newcost == costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
         return inscribed_inflated_obstacle_;
@@ -378,8 +386,6 @@ bool GKI3dNavPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
     env_->publish_planning_scene();
     private_nh_->getParam("use_freespace_heuristic", use_freespace_heuristic_);
     env_->useFreespaceHeuristic(use_freespace_heuristic_);
-    env_->count = 0;
-    env_->past = 0;
     bool planOK = makePlan_(start, goal, plan);
     if(planOK) {
         moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
@@ -520,6 +526,7 @@ bool GKI3dNavPlanner::makePlan_(geometry_msgs::PoseStamped start, geometry_msgs:
         else
         {
             ROS_INFO("Solution not found\n");
+            publish_expansions();
             publishStats(solution_cost, 0, start, goal);
             return false;
         }

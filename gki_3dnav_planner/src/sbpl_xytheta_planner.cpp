@@ -35,12 +35,13 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
 
     ROS_INFO("Planner Name is %s", name.c_str());
 
-    private_nh_->param("planner_type", planner_type_, string("ARAPlanner"));
+    private_nh_->param("planner_type", planner_type_, std::string("ARAPlanner"));
     private_nh_->param("allocated_time", allocated_time_, 10.0);
     private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
     private_nh_->param("forward_search", forward_search_, bool(false));
     std::string motion_primitive_filename;
-    private_nh_->param("motion_primitive_filename", motion_primitive_filename, string(""));
+    
+    private_nh_->param("motion_primitive_filename", motion_primitive_filename, std::string(""));
     private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
 
     double trans_vel, rot_vel;
@@ -56,7 +57,7 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
         exit(1);
     }
 
-    vector<sbpl_2Dpt_t> perimeterptsV;
+    std::vector<sbpl_2Dpt_t> perimeterptsV;
     std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
     perimeterptsV.reserve(footprint.size());
     for(size_t ii(0); ii < footprint.size(); ++ii) {
@@ -161,8 +162,9 @@ bool SBPLXYThetaPlanner::sampleValidPoses(gki_3dnav_planner::SampleValidPoses::R
     return resp.poses.poses.size() >= req.n;
 }
 
-bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal,
-        std::vector<geometry_msgs::PoseStamped>& plan)
+bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
+				  const geometry_msgs::PoseStamped& goalPose,
+				  std::vector<geometry_msgs::PoseStamped>& plan)
 {
     if(!initialized_) {
         ROS_ERROR("Global planner is not initialized");
@@ -171,10 +173,13 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& start, const
     env_->updateForPlanRequest();
     ROS_INFO("Planning frame is %s", getPlanningFrame().c_str());
 
+    geometry_msgs::PoseStamped start = startPose;
     if(!env_->transformPoseToPlanningFrame(start)) {
         ROS_ERROR("Unable to transform start pose into planning frame");
         return false;
     }
+
+    geometry_msgs::PoseStamped goal = goalPose;
     if(!env_->transformPoseToPlanningFrame(goal)) {
         ROS_ERROR("Unable to transform goal pose into planning frame");
         return false;
@@ -187,6 +192,7 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& start, const
             goal.pose.position.x, goal.pose.position.y, angles::to_degrees(theta_goal));
 
     int startId = 0;
+
     planner_->force_planning_from_scratch();
     try {
         int ret = env_->SetStart(start.pose.position.x, start.pose.position.y, theta_start);
@@ -210,6 +216,9 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& start, const
         ROS_ERROR("SBPL encountered a fatal exception while setting the goal state");
         return false;
     }
+
+    planner_->force_planning_from_scratch();
+    // TODO also/instead update planner with changed world/states
 
     ROS_INFO("Start state Heur: %d", env_->GetGoalHeuristic(startId));
 
@@ -239,7 +248,7 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& start, const
 
     ROS_DEBUG("solution length %zu", solution_stateIDs.size());
 
-    vector<EnvNAVXYTHETALAT3Dpt_t> sbpl_path;
+    std::vector<EnvNAVXYTHETALAT3Dpt_t> sbpl_path;
     try {
         env_->ConvertStateIDPathintoXYThetaPath(&solution_stateIDs, &sbpl_path);
     } catch (SBPL_Exception& e) {
@@ -278,7 +287,7 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& start, const
     publishStats(solution_cost, sbpl_path.size(), start, goal);
     moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
     traj_pub_.publish(traj);
-    env_->publish_expanded_states();
+
     publish_expansions();
     return true;
 }

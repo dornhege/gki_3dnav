@@ -11,6 +11,8 @@
 #include <sbpl/headers.h>
 #include <gki_3dnav_planner/SampleValidPoses.h>
 
+#include "gki_3dnav_planner/environment_navxythetalat_generic.h"
+
 namespace sbpl_xytheta_planner
 {
 
@@ -41,8 +43,8 @@ protected:
 
     /// Create a custom environment for this planner.
     virtual EnvironmentNavXYThetaLatGeneric* createEnvironment(ros::NodeHandle & nhPriv) = 0;
-    virtual bool initializeEnvironment(const vector<sbpl_2Dpt_t> & footprint,
-            double trans_vel, double timeToTurn45Degs, const std::string & motion_primitive_filename) = 0;
+    virtual bool initializeEnvironment(const std::vector<sbpl_2Dpt_t> & footprint,
+				       double trans_vel, double timeToTurn45Degs, const std::string & motion_primitive_filename) = 0;
 
 
 private:

@@ -1,15 +1,20 @@
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 #include <sbpl/utils/key.h>
+#include <sbpl/utils/utils.h>
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
+#include <stdlib.h>
 #include <fstream>
 
 namespace freespace_mechanism_heuristic
 {
 
 HeuristicCostMap::HeuristicCostMap(unsigned int height, unsigned int width, unsigned int numThetaDirs,
+        double transVel, double rotVel,
         bool allocate, enum OutOfMapBehavior outOfMapBehaviour) :
-    height_(height), width_(width), numThetaDirs_(numThetaDirs), outOfMapBehaviour_(outOfMapBehaviour)
+    height_(height), width_(width), numThetaDirs_(numThetaDirs), tv_(transVel), rv_(rotVel),
+    outOfMapBehaviour_(outOfMapBehaviour)
 {
     if(allocate) {
         allocateMaps(); 
@@ -73,10 +78,12 @@ bool HeuristicCostMap::loadCostMap(const std::string & mapfile)
         return false;
     }
 
-    // header infos: sx, sy, num thetas
+    // header infos: sx, sy, num thetas, tv, rv
     f.read(reinterpret_cast<char*>(&width_), sizeof(int));
     f.read(reinterpret_cast<char*>(&height_), sizeof(int));
     f.read(reinterpret_cast<char*>(&numThetaDirs_), sizeof(int));
+    f.read(reinterpret_cast<char*>(&tv_), sizeof(double));
+    f.read(reinterpret_cast<char*>(&rv_), sizeof(double));
     // delete/allocate
     deallocateMaps();
     allocateMaps();
@@ -107,10 +114,12 @@ bool HeuristicCostMap::saveCostMap(const std::string & mapfile) const
         return false;
     }
 
-    // header infos: sx, sy, num thetas
+    // header infos: sx, sy, num thetas, tv, rv
     f.write(reinterpret_cast<const char*>(&width_), sizeof(int));
     f.write(reinterpret_cast<const char*>(&height_), sizeof(int));
     f.write(reinterpret_cast<const char*>(&numThetaDirs_), sizeof(int));
+    f.write(reinterpret_cast<const char*>(&tv_), sizeof(double));
+    f.write(reinterpret_cast<const char*>(&rv_), sizeof(double));
     // Then one costmap per start theta
     assert(costmaps_.size() == numThetaDirs_);
     for(unsigned int i = 0; i < costmaps_.size(); ++i) {
@@ -128,32 +137,37 @@ bool HeuristicCostMap::saveCostMap(const std::string & mapfile) const
     return true;
 }
 
-bool HeuristicCostMap::saveCostMapImage(const std::string & ppmfile, int startTheta, int endTheta) const
+bool HeuristicCostMap::saveCostMapImage(const std::string & ppmfile, int startTheta, int endTheta, int expansion) const
 {
     std::ofstream f(ppmfile.c_str());
     if(!f.good())
         return false;
 
-    f << "P3 " << width_ << " " << height_ << " 255" << std::endl;
+    f << "P3 " << width_ + 2*expansion << " " << height_ + 2 * expansion << " 255" << std::endl;
 
     // image save, i.e.: iterate lines by height and start with "top line", i.e. the last/max index
-    for(int y = height_ - 1; y >= 0; --y) {
-        for(unsigned int x = 0; x < width_; ++x) {
+    int maxCostExtra = 0;
+    if(expansion > 0) {
+        maxCostExtra = getEuclideanCost(expansion, expansion, 0, numThetaDirs_/2);
+    }
+
+    for(int dy = -height_/2 + height_ - 1 + expansion; dy >= -height_/2 - expansion; --dy) {
+        for(int dx = -width_/2 - expansion; dx < -width_/2 + width_ + expansion; ++dx) {
             unsigned int cost = 255;
             if(endTheta < 0) {
-                cost = costmaps_[startTheta][x][y][0];
+                cost = getCost(dx, dy, startTheta, 0);
                 for(unsigned int th = 1; th < numThetaDirs_; ++th) {
-                    if(costmaps_[startTheta][x][y][th] < cost)
-                        cost = costmaps_[startTheta][x][y][th];
+                    if(getCost(dx, dy, startTheta, th) < cost)
+                        cost = getCost(dx, dy, startTheta, th);
                 }
             } else {
-                cost = costmaps_[startTheta][x][y][endTheta];
+                cost = getCost(dx, dy, startTheta, endTheta);
             }
             if(cost == INFINITECOST) {
                 f << "255 0 255 ";
                 continue;
             }
-            int c = int(double(cost)/maxCost_ * 240.0);
+            int c = int(double(cost)/(maxCost_ + maxCostExtra) * 240.0);
             //printf("Writing cost: %d as %d for th %d (max %d)\n", cost, c, theta, g_maxCost);
             f << c << " " << c << " " << c << " ";
         }
@@ -183,6 +197,54 @@ void HeuristicCostMap::updateMaxCost()
         maxCost_ = 1;
 }
 
+void HeuristicCostMap::computeBorderCell(int dx, int dy, int & border_x, int & border_y) const
+{
+    int ind_x = dx + width_/2;
+    int ind_y = dy + height_/2;
+
+    // clamp the indices
+    if(ind_x < 0)
+        ind_x = 0;
+    if(ind_x >= width_)
+        ind_x = width_ - 1;
+    if(ind_y < 0)
+        ind_y = 0;
+    if(ind_y >= height_)
+        ind_y = height_ - 1;
+
+    // compute back the max delta from these
+    // These are signed clamping values, representing the max extends, not absolutes!
+    int clamped_dx = ind_x - width_/2;
+    int clamped_dy = ind_y - height_/2;
+
+    // y coordinate corresponding to clamped_dx in direction of dx, dy, and vice versa
+    int yForClamped_dx = dx==0? clamped_dy : (clamped_dx*dy)/dx;
+    int xForClamped_dy = dy==0? clamped_dx : (clamped_dy*dx)/dy;
+
+    // project either to x or y border and take the one that ends up in map
+    int dxInMap = clamped_dx;
+    int dyInMap = yForClamped_dx;
+    // dyInMap == 0 -> keep this
+    if((dyInMap > 0 && dyInMap > clamped_dy) ||
+            (dyInMap < 0 && dyInMap < clamped_dy)) {
+        dxInMap = xForClamped_dy;
+        dyInMap = clamped_dy;
+        assert((dxInMap >= 0 && dxInMap <= clamped_dx) || (dxInMap <= 0 && dxInMap >= clamped_dx));
+    }
+    border_x = dxInMap;
+    border_y = dyInMap;
+}
+
+unsigned int HeuristicCostMap::getEuclideanCost(int dx, int dy, int startTheta, int endTheta) const
+{
+    // See EnvironmentNAVXYTHETALATTICE::PrecomputeActionswithCompleteMotionPrimitive
+    double linear_time = hypot(dx, dy)/tv_;
+    double angular_distance =
+        fabs(computeMinUnsignedAngleDiff(DiscTheta2Cont(endTheta, numThetaDirs_),
+                    DiscTheta2Cont(startTheta, numThetaDirs_)));
+    double angular_time = angular_time/rv_;
+    return (int)ceil(1000.0 * std::max(linear_time, angular_time));
+}
 
 unsigned int HeuristicCostMap::getCost(int dx, int dy, int startTheta, int endTheta) const
 {
@@ -196,8 +258,50 @@ unsigned int HeuristicCostMap::getCost(int dx, int dy, int startTheta, int endTh
             case OutOfMapInfiniteCost:
                 return INFINITECOST;
             case OutOfMapAssert:
-                assert(ind_x < 0 || ind_x >= width_ || ind_y < 0 || ind_y >= height_
-                        || startTheta < 0 || startTheta >= numThetaDirs_ || endTheta < 0 || endTheta >= numThetaDirs_);
+                assert(ind_x >= 0 && ind_x < width_ && ind_y >= 0 && ind_y < height_);
+                assert(startTheta >= 0 && startTheta < numThetaDirs_ && endTheta >= 0 && endTheta < numThetaDirs_);
+                return 0;
+            case OutOfMapExpandEuclideanPrepend:
+                {
+                // compute border cell coordinates
+                int bx, by;
+                computeBorderCell(dx, dy, bx, by);
+                int ind_bx = bx + width_/2;
+                int ind_by = by + height_/2;
+                assert(ind_bx >= 0 && ind_bx < width_ && ind_by >= 0 && ind_by < height_);
+                // compute cost of border cell to goal delta
+                // Nevermind if prepend or append, we'll always take the largest possible translation
+                // part in the costmap
+                int minCost = costmaps_[0][ind_bx][ind_by][endTheta] +
+                    getEuclideanCost(dx - bx, dy - by, startTheta, 0);
+                for(int i = 1; i < numThetaDirs_; ++i) {
+                    int cost = costmaps_[i][ind_bx][ind_by][endTheta] +
+                        getEuclideanCost(dx - bx, dy - by, startTheta, i);
+                    if(cost < minCost)
+                        minCost = cost;
+                }
+                return minCost;
+                }
+            case OutOfMapExpandEuclideanAppend:
+                {
+                // compute border cell coordinates
+                int bx, by;
+                computeBorderCell(dx, dy, bx, by);
+                int ind_bx = bx + width_/2;
+                int ind_by = by + height_/2;
+                assert(ind_bx >= 0 && ind_bx < width_ && ind_by >= 0 && ind_by < height_);
+                // compute cost of border cell to goal delta
+                int minCost = costmaps_[startTheta][ind_bx][ind_by][0] +
+                    getEuclideanCost(dx - bx, dy - by, 0, endTheta);
+                for(int i = 1; i < numThetaDirs_; ++i) {
+                    int cost = costmaps_[startTheta][ind_bx][ind_by][i] +
+                        getEuclideanCost(dx - bx, dy - by, i, endTheta);
+                    if(cost < minCost)
+                        minCost = cost;
+                }
+                return minCost;
+                }
+            case OutOfMapZero:
                 return 0;
         }
     }

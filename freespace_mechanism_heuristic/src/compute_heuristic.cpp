@@ -4,6 +4,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <stdlib.h>
+#include <math.h>
 #include <queue>
 #include <fstream>
 #include <sstream>
@@ -12,6 +13,8 @@
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 
 using namespace freespace_mechanism_heuristic;
+
+bool g_WriteImages = false;
 
 // This is basically just to get to the motion primitives functionalities
 class EnvironmentMotionPrims : public EnvironmentNAVXYTHETALATTICE 
@@ -173,14 +176,16 @@ void computeCosts(const EnvNAVXYTHETALATConfig_t & cfg, int theta, HeuristicCost
                     ss.str("");
 
                     ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_" << countStr << "_"  << endTh << ".pgm";
-                    costmaps.saveCostMapImage(ss.str(), theta, th);
+                    if(g_WriteImages)
+                        costmaps.saveCostMapImage(ss.str(), theta, th);
                     ss.str("");
                 }
                 ss << std::setfill('0') << std::setw(6) << count;
                 std::string countStr = ss.str();
                 ss.str("");
                 ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_bestTh" << "_" << countStr << ".pgm";
-                costmaps.saveCostMapImage(ss.str(), theta, -1);
+                if(g_WriteImages)
+                    costmaps.saveCostMapImage(ss.str(), theta, -1);
 
                 count++;
                 if(count > 3) {
@@ -219,14 +224,21 @@ void computeCosts(const EnvNAVXYTHETALATConfig_t & cfg, int theta, HeuristicCost
         ss.str("");
 
         ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_" << countStr << "_"  << endTh << ".pgm";
-        costmaps.saveCostMapImage(ss.str(), theta, th);
+        if(g_WriteImages)
+            costmaps.saveCostMapImage(ss.str(), theta, th);
         ss.str("");
     }
     std::string countStr = "final";
     ss << std::setfill('0') << "costmap_" << std::setw(2) << theta << "_bestTh" << "_" << countStr << ".pgm";
-    costmaps.saveCostMapImage(ss.str(), theta, -1);
+    if(g_WriteImages)
+        costmaps.saveCostMapImage(ss.str(), theta, -1);
 }
 
+}
+
+void printUsage()
+{
+    printf("Usage: compute_heuristic --sx SIZE_X --sy SIZE_Y --mprims MPRIM_FILE --tv TRANS_VEL_M_PER_S --rt TIME_TO_TURN_45_DEG_SECS -i (enable write debug images)\n");
 }
 
 int main(int argc, char** argv)
@@ -242,15 +254,21 @@ int main(int argc, char** argv)
         {"sy", required_argument, 0, 'y'},
         {"mprims", required_argument, 0, 'f'},
         {"tv", required_argument, 0, 't'},
-        {"rv", required_argument, 0, 'r'},
+        {"rt", required_argument, 0, 'r'},
         {0, 0, 0, 0}
     };
     while(true) {
         int option_index = 0;
-        c = getopt_long(argc, argv, "x:y:f:t:r:", long_options, &option_index);
+        c = getopt_long(argc, argv, "hix:y:f:t:r:", long_options, &option_index);
         if(c == -1)
             break;
         switch (c) {
+            case 'h':
+                printUsage();
+                return 1;
+            case 'i':
+                g_WriteImages = true;
+                break;
             case 'x':
                 size_x = atoi(optarg);
                 break;
@@ -277,9 +295,13 @@ int main(int argc, char** argv)
         fprintf(stderr, "Failed to read prims.\n");
         return 1;
     }
-
     const EnvNAVXYTHETALATConfig_t& cfg = env.getConfig();
+
+    double rv = M_PI/4.0 / timetoturn45degsinplace_secs;
+    double tv = nominalvel_mpersecs / cfg.cellsize_m;   // euclidean queries will come in cells, not m
+
     HeuristicCostMap costmap(cfg.EnvHeight_c, cfg.EnvWidth_c, cfg.NumThetaDirs,
+            tv, rv,
             true, HeuristicCostMap::OutOfMapAssert);
 
     for(unsigned int th = 0; th < cfg.NumThetaDirs; ++th) {
