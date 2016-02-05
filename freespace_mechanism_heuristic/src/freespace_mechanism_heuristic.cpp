@@ -6,6 +6,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <fstream>
+#include <ros/ros.h>
 
 namespace freespace_mechanism_heuristic
 {
@@ -301,6 +302,8 @@ unsigned int HeuristicCostMap::getCost(int dx, int dy, int startTheta, int endTh
                 }
                 return minCost;
                 }
+            case OutOfMapRecursiveQuery:
+                return getCostRecurs(dx, dy, startTheta, endTheta, 0);
             case OutOfMapZero:
                 return 0;
         }
@@ -308,6 +311,35 @@ unsigned int HeuristicCostMap::getCost(int dx, int dy, int startTheta, int endTh
 
     assert(costmaps_.size() == numThetaDirs_);
     return costmaps_[startTheta][ind_x][ind_y][endTheta];
+}
+
+unsigned int HeuristicCostMap::getCostRecurs(int dx, int dy, int startTheta, int endTheta, int depth) const
+{
+    if(depth >= 6) {
+        ROS_WARN_THROTTLE(1.0, "Freespace Heuristic depth: %d", depth);
+    }
+
+    // compute border cell coordinates
+    int bx, by;
+    computeBorderCell(dx, dy, bx, by);
+    if(dx == bx && dy == by) {
+        return getCost(dx, dy, startTheta, endTheta);
+    }
+
+    int ind_bx = bx + width_/2;
+    int ind_by = by + height_/2;
+    assert(ind_bx >= 0 && ind_bx < width_ && ind_by >= 0 && ind_by < height_);
+
+    int hdelta = getCost(bx, by, startTheta, 0)
+        + getCostRecurs(dx - bx, dy - by, 0, endTheta, depth + 1);
+    for(size_t i = 1; i < numThetaDirs_; ++i){
+        int hnewdelta = getCost(bx, by, startTheta, i)
+            + getCostRecurs(dx - bx, dy - by, i, endTheta, depth + 1);
+        if(hnewdelta < hdelta){
+            hdelta = hnewdelta;
+        }
+    }
+    return hdelta;
 }
 
 }
