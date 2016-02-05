@@ -6,25 +6,19 @@
 
 using namespace std;
 
-/** ROS **/
 #include <ros/ros.h>
-
-// Costmap used for the map representation
 #include <costmap_2d/costmap_2d_ros.h>
-
-// sbpl headers
 #include "gki_3dnav_planner/environment_navxythetalat_moveit.h"
 #include <sbpl/headers.h>
 #include <geometry_msgs/Pose2D.h>
 #include <gki_3dnav_planner/SampleValidPoses.h>
-
-//global representation
 #include <nav_core/base_global_planner.h>
+#include "gki_3dnav_planner/sbpl_xytheta_planner.h"
 
 namespace gki_3dnav_planner
 {
 
-class GKI3dNavPlanner: public nav_core::BaseGlobalPlanner
+class GKI3dNavPlanner: public sbpl_xytheta_planner::SBPLXYThetaPlanner
 {
 public:
 
@@ -46,6 +40,17 @@ public:
      * @param  costmap_ros A pointer to the ROS wrapper of the costmap to use
      */
     virtual void initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros);
+
+    virtual EnvironmentNavXYThetaLatGeneric* createEnvironment(ros::NodeHandle & nhPriv)
+    {
+        // TODO
+    }
+
+    virtual bool initializeEnvironment(const std::vector<sbpl_2Dpt_t> & footprint,
+            double trans_vel, double timeToTurn45Degs, const std::string & motion_primitive_filename)
+    {
+        // TODO
+    }
 
     /**
      * @brief Given a goal pose in the world, compute a plan
@@ -81,6 +86,7 @@ protected:
 
 private:
     bool makePlan_(geometry_msgs::PoseStamped start, geometry_msgs::PoseStamped goal, std::vector<geometry_msgs::PoseStamped>& plan);
+    // TODO move to env
     bool transformPoseToPlanningFrame(geometry_msgs::PoseStamped& stamped);
     unsigned char costMapCostToSBPLCost(unsigned char newcost);
     void publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal);
@@ -120,8 +126,8 @@ private:
     std::vector<geometry_msgs::Point> footprint_;
 
 };
+
 }
-;
 
 #endif
 

@@ -8,6 +8,7 @@
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit_msgs/DisplayTrajectory.h>
+#include "gki_3dnav_planner/environment_navxythetalat_generic.h"
 #include "freespace_mechanism_heuristic/freespace_mechanism_heuristic.h"
 #include "timing/timing.h"
 
@@ -53,7 +54,7 @@
  * that the grid coordinates are valid for costmap coordinates. These functions
  * would need to use the ...Costmap style function, which convert.
  */
-class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
+class EnvironmentNavXYThetaLatMoveit : public EnvironmentNavXYThetaLatGeneric
 {
     public:
         EnvironmentNavXYThetaLatMoveit(ros::NodeHandle & nhPriv, double costmapOffsetX, double costmapOffsetY);
@@ -72,6 +73,14 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_lookup(int X, int Y, int Theta);
         virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_hash(int X, int Y, int Theta);
 
+        /// Returns the scene's planning frame.
+        virtual std::string getPlanningFrame() const;
+
+        /// Transform a pose in any frame by a suitable method to the planning frame.
+        virtual bool transformPoseToPlanningFrame(geometry_msgs::PoseStamped & pose);
+
+        /// Get the x/y dimensions of the OctoMap.
+        virtual bool getExtents(double minX, double maxX, double minY, double maxY);
 
         /// Convert a pose from the world coordinate system in the planning frame
         /// into the environment's 0 origin system.
@@ -124,22 +133,29 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         /// Publish the currently used planning scene instance.
         virtual void publish_planning_scene();
         /// Use this to access the PlanningScene. Never use internal data structures for that.
-        virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
+        virtual planning_scene::PlanningSceneConstPtr getPlanningScene() const;
 
-        bool useFreespaceHeuristic(bool on) { useFreespaceHeuristic_ = on; }
-
-        virtual int GetFromToHeuristic(int FromStateID, int ToStateID);
-        virtual int GetStartHeuristic(int stateID);
-        virtual int GetGoalHeuristic(int stateID);
-        int getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end, int depth = 0);
-
-        moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const;
+        virtual moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(
+                const std::vector<geometry_msgs::PoseStamped> & path) const;
 
         void resetTimingStats();
         void printTimingStats();
 
     protected:
+        struct FullBodyCollisionInfo {
+            bool initialized;
+            bool collision;
+
+            FullBodyCollisionInfo() {
+                initialized = false;
+                collision = true;
+            }
+        };
+
         virtual int GetActionCost(int SourceX, int SourceY, int SourceTheta, EnvNAVXYTHETALATAction_t* action);
+
+        bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);
+        const FullBodyCollisionInfo& get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state);
 
         // disallow these to be called, won't work correctly any more
         virtual bool InitializeEnv(const char* sEnvFile, const std::vector<sbpl_2Dpt_t>& perimeterptsV,
@@ -147,31 +163,13 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
         virtual bool InitializeEnv(const char* sEnvFile);
 
     protected:
-        struct FullBodyCollisionInfo
-        {
-            bool initialized;
-            bool collision;
-
-            FullBodyCollisionInfo()
-            {
-                initialized = false;
-                collision = true;
-            }
-        };
         std::vector<FullBodyCollisionInfo> full_body_collision_infos;
-        freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
-        bool useFreespaceHeuristic_;
 
         planning_scene::PlanningScenePtr scene;
         planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
-        std::string scene_update_name;  ///< Scene updates are queried by this service.
+        std::string scene_update_name;              ///< Scene updates are queried by this service.
         ros::Publisher planning_scene_publisher;
         std::vector<std::string> allowed_collision_links;
-
-        ros::Publisher pose_array_publisher;
-
-        bool in_full_body_collision(EnvNAVXYTHETALATHashEntry_t* state);
-        const FullBodyCollisionInfo& get_full_body_collision_info(EnvNAVXYTHETALATHashEntry_t* state);
 
         /// Position of the 0, 0 grid index in the world
         double worldOriginX;
@@ -179,10 +177,8 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNAVXYTHETALAT
 
         Timing* timeActionCost;
         Timing* timeActionCostParent;
-        Timing* timeFreespace;
         Timing* timeFullBodyCollision;
         Timing* time3dCheck;
-        Timing* timeHeuristic;
 };
 
 #endif
