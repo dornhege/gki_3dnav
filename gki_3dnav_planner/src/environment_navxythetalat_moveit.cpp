@@ -159,7 +159,8 @@ int EnvironmentNavXYThetaLatMoveit::GetActionCost(int SourceX, int SourceY, int 
     return cost;
 }
 
-bool EnvironmentNavXYThetaLatMoveit::getExtents(double minX, double maxX, double minY, double maxY)
+// TODO octomap vs. costmap extends -> This should be extents of underlying grid
+bool EnvironmentNavXYThetaLatMoveit::getExtents(double & minX, double & maxX, double & minY, double & maxY)
 {
     clear_full_body_collision_infos();    // TODO how is the matching states cleared ever? how is a new planning query started in general (i.e. reset all states, force planning from scratch in env?)
     // Why do we even need this here? For update_planning_scene()? Then that should clear!

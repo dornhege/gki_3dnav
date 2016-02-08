@@ -80,7 +80,7 @@ class EnvironmentNavXYThetaLatMoveit : public EnvironmentNavXYThetaLatGeneric
         virtual bool transformPoseToPlanningFrame(geometry_msgs::PoseStamped & pose);
 
         /// Get the x/y dimensions of the OctoMap.
-        virtual bool getExtents(double minX, double maxX, double minY, double maxY);
+        virtual bool getExtents(double & minX, double & maxX, double & minY, double & maxY);
 
         /// Convert a pose from the world coordinate system in the planning frame
         /// into the environment's 0 origin system.

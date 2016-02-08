@@ -1,5 +1,6 @@
 #include <gki_3dnav_planner/sbpl_xytheta_planner.h>
 #include <nav_msgs/Path.h>
+#include <nav_msgs/OccupancyGrid.h>
 #include <gki_3dnav_planner/PlannerStats.h>
 #include <sbpl/planners/planner.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -121,6 +122,10 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
     traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
     expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
+    pub_expansion_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("expansion_map", 3, true);
+    pub_generation_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("generation_map", 3, true);
+    pub_expansion_first_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("expansion_first_map", 3, true);
+    pub_generation_first_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("generation_first_map", 3, true);
 
     srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
             &SBPLXYThetaPlanner::sampleValidPoses, this);
@@ -275,6 +280,7 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
         } else {
             ROS_INFO("Solution not found\n");
             publish_expansions();
+            publish_expansion_map();
             publishStats(solution_cost, 0, start, goal);
             return false;
         }
@@ -325,6 +331,7 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
     moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
     traj_pub_.publish(traj);
     publish_expansions();
+    publish_expansion_map();
     return true;
 }
 
@@ -390,6 +397,91 @@ void SBPLXYThetaPlanner::publish_expansions()
     }
 
     expansions_publisher_.publish(ma);
+}
+
+void fillGrid(nav_msgs::OccupancyGrid & grid, const std::vector< std::set<int> > & gridDirections, int maxDirections)
+{
+    assert(grid.data.size() == gridDirections.size());
+    for(int i = 0; i < gridDirections.size(); ++i) {
+        double percTheta = (double)gridDirections[i].size()/(double)maxDirections;
+        // TODO color scheme select (costmap? check offsets?)
+        // 100 for lethal
+        // 99 for inscribed
+        // 0 for no obstacle
+        if(gridDirections[i].empty())
+            grid.data[i] = -1;
+        else
+            grid.data[i] = 100.0 * percTheta;
+    }
+}
+
+
+void SBPLXYThetaPlanner::publish_expansion_map()
+{
+    ARAPlanner* pl = dynamic_cast<ARAPlanner*>(planner_);
+    if(!pl)
+        return;
+
+    // setup an empty grid map for the environment
+    std::vector<SBPL_xytheta_mprimitive> prim_vec;
+    double dummy;
+    unsigned char dummyC;
+    int sizeX, sizeY, numThetas;
+    double resolution;
+    // TODO check impl in flourish cfg
+    env_->GetEnvParms(&sizeX, &sizeY, &numThetas,
+            &dummy, &dummy, &dummy,     // start
+            &dummy, &dummy, &dummy,     // goal
+            &resolution, &dummy, &dummy,
+            &dummyC, &prim_vec);
+    double minX, maxX, minY, maxY;
+    env_->getExtents(minX, maxX, minY, maxY);
+    nav_msgs::OccupancyGrid grid;
+    grid.header.frame_id = getPlanningFrame();
+    grid.info.resolution = resolution;
+    grid.info.width = sizeX;
+    grid.info.height = sizeY;
+    grid.info.origin.position.x = minX;
+    grid.info.origin.position.y = minY;
+    grid.info.origin.orientation.w = 1.0;
+    grid.data.resize(grid.info.width * grid.info.height, -1);
+    std::vector< std::set<int> > gridExpansionsDirections(grid.data.size());
+    std::vector< std::set<int> > gridExpansionsFirstDirections(grid.data.size());
+    std::vector< std::set<int> > gridGenerationsDirections(grid.data.size());
+    std::vector< std::set<int> > gridGenerationsFirstDirections(grid.data.size());
+
+    const std::vector< std::vector<int> > & gen_states = pl->get_generated_states();
+    const std::vector< std::vector<int> > & exp_states = pl->get_expanded_states();
+
+    for(int iteration = 0; iteration < exp_states.size(); iteration++) {
+        int state = 0;
+        for(; state < exp_states[iteration].size(); state++) {
+            int x, y, theta;
+            env_->GetCoordFromState(exp_states[iteration][state], x, y, theta);
+            gridExpansionsDirections[x + y * grid.info.width].insert(theta);
+            if(iteration == 0)
+                gridExpansionsFirstDirections[x + y * grid.info.width].insert(theta);
+        }
+    }
+    for(int iteration = 0; iteration < gen_states.size(); iteration++) {
+        int state = 0;
+        for(; state < gen_states[iteration].size(); state++) {
+            int x, y, theta;
+            env_->GetCoordFromState(gen_states[iteration][state], x, y, theta);
+            gridGenerationsDirections[x + y * grid.info.width].insert(theta);
+            if(iteration == 0)
+                gridGenerationsFirstDirections[x + y * grid.info.width].insert(theta);
+        }
+    }
+
+    fillGrid(grid, gridExpansionsDirections, numThetas);
+    pub_expansion_map_.publish(grid);
+    fillGrid(grid, gridExpansionsFirstDirections, numThetas);
+    pub_expansion_first_map_.publish(grid);
+    fillGrid(grid, gridGenerationsDirections, numThetas);
+    pub_generation_map_.publish(grid);
+    fillGrid(grid, gridGenerationsFirstDirections, numThetas);
+    pub_generation_first_map_.publish(grid);
 }
 
 }

@@ -41,7 +41,8 @@ class EnvironmentNavXYThetaLatGeneric : public EnvironmentNAVXYTHETALAT
         virtual geometry_msgs::Pose poseFromStateID(int stateID) const = 0;
 
         /// Get the x/y dimensions of the underlying environment.
-        virtual bool getExtents(double minX, double maxX, double minY, double maxY) = 0;
+        virtual bool getExtents(double & minX, double & maxX, double & minY, double & maxY) = 0;
+
 
         /// Update the internal representation to be current for a plan request.
         /// Called, whenever makePlan is called.
