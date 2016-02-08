@@ -657,8 +657,6 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
   int targetx_d, targety_d, targettheta_d;
   int sourcex_d, sourcey_d, sourcetheta_d;
 
-  //SBPL_PRINTF("checks=%ld\n", checks);
-
   xythetaPath->clear();
 
 #if DEBUG
@@ -672,7 +670,6 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
 #if DEBUG
     GetCoordFromState(sourceID, sourcex_d, sourcey_d, sourcetheta_d);
 #endif
-
 
     //get successors and pick the target via the cheapest action
     SuccIDV.clear();
@@ -688,7 +685,6 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
     GetCoordFromState(targetID, targetx_d, targety_d, targettheta_d);
     SBPL_FPRINTF(fDeb, "looking for %d %d %d -> %d %d %d (numofsuccs=%d)\n", sourcex_d, sourcey_d, sourcetheta_d,
 		 targetx_d, targety_d, targettheta_d, (int)SuccIDV.size());
-
 #endif
 
     for(int sind = 0; sind < (int)SuccIDV.size(); sind++){
@@ -716,8 +712,6 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
     //now push in the actual path
     int sourcex_d, sourcey_d, sourcetheta_d;
     GetCoordFromState(sourceID, sourcex_d, sourcey_d, sourcetheta_d);
-    //Eigen::Vector2i index(sourcex_d, sourcey_d);
-    //Eigen::Vector2f pos = tMap.gridToWorld(index);
     sbpl_xy_theta_pt_t source_xy_theta = gridToWorld(sourcex_d, sourcey_d, sourcetheta_d);
 
     //TODO - when there are no motion primitives we should still print source state
@@ -727,16 +721,6 @@ void EnvironmentNavXYThetaLatFlourish::ConvertStateIDPathintoXYThetaPath(std::ve
       intermpt.x += source_xy_theta.x;
       intermpt.y += source_xy_theta.y;
       
-      //int x_d, y_d, theta_d;
-      //worldToGrid(intermpt.x, intermpt.y, intermpt.theta, x_d, y_d, theta_d);
-      //std::cout << "pushing pose " << intermpt.x << ", " << intermpt.y << ", " << intermpt.theta
-      //		<< " with indices " << x_d << ", " << y_d << ", " << theta_d;
-      //if(!IsValidConfiguration(x_d, y_d, theta_d)){
-      //	std::cout << ". It's invalid!" << std::endl;
-      //}else{
-      //	std::cout << std::endl;
-      //}
-
       //store
       xythetaPath->push_back(intermpt);
     }
@@ -758,11 +742,7 @@ int EnvironmentNavXYThetaLatFlourish::GetStartHeuristic(int stateID)
   }
 #endif
   EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
-  //int h2D = grid2Dsearchfromstart->getlowerboundoncostfromstart_inmm(HashEntry->X, HashEntry->Y);
   int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM*EuclideanDistance_m(EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c, HashEntry->X, HashEntry->Y));
-
-  //define this function if it is used in the planner (heuristic backward search would use it)
-  //return (int)(((double)__max(h2D,hEuclid))/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
   int heur = (int)(((double)hEuclid)/EnvNAVXYTHETALATCfg.nominalvel_mpersecs); 
 
   int dx = EnvNAVXYTHETALATCfg.StartX_c - HashEntry->X;
@@ -831,18 +811,14 @@ int EnvironmentNavXYThetaLatFlourish::GetGoalHeuristic(int stateID)
 
   EnvNAVXYTHETALATHashEntry_t* HashEntry = StateID2CoordTable[stateID];
   //computes distances from start state that is grid2D, so it is EndX_c EndY_c
-  //int h2D = grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(HashEntry->X, HashEntry->Y); 
   int hEuclid = (int)(NAVXYTHETALAT_COSTMULT_MTOMM * EuclideanDistance_m(HashEntry->X, HashEntry->Y,
 									 EnvNAVXYTHETALATCfg.EndX_c,
 									 EnvNAVXYTHETALATCfg.EndY_c));
-  //define this function if it is used in the planner (heuristic backward search would use it)
-  //int heur = (int)(((double)__max(h2D, hEuclid)) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs);
   int heur = (int)(((double)hEuclid) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs);
 
   int dx = EnvNAVXYTHETALATCfg.EndX_c - HashEntry->X;
   int dy = EnvNAVXYTHETALATCfg.EndY_c - HashEntry->Y;
   int startTh = HashEntry->Theta;
-  //std::cout << "getting freespace cost of coordinates " << dx << ", " << dy << std::endl;
   int hfs = getFreespaceCost(dx, dy, startTh, EnvNAVXYTHETALATCfg.EndTheta);
 
   count++;

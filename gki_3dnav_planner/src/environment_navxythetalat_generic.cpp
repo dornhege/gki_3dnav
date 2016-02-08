@@ -182,7 +182,7 @@ moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatGeneric::pathToDisplayTra
             tf::transformMsgToTF(tf, curPose);
             tf::Transform delta = lastPose.inverseTimes(curPose);
             if(hypot(delta.getOrigin().x(), delta.getOrigin().y()) < 0.05 &&
-                    tf::getYaw(delta.getRotation()) < 0.2)
+	       fabs(tf::getYaw(delta.getRotation())) < 0.2)
                 continue;
         }
 
