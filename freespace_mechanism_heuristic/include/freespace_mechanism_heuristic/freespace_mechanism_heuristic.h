@@ -19,9 +19,14 @@ class HeuristicCostMap
             OutOfMapMaxCost,        ///< use max value of map
             OutOfMapInfiniteCost,   ///< use INFINITECOST
             OutOfMapAssert,         ///< Assert, i.e., should not happen
+            OutOfMapZero,           ///< if out of map, return 0
+            // The following options minimize over theta, but not over all cells in the grid (for performance).
+            // Thus these are not admissable any more.
             OutOfMapExpandEuclideanPrepend,    ///< compute the out of map part by prepending euclidean distance query
             OutOfMapExpandEuclideanAppend,     ///< compute the out of map part by appending euclidean distance query
-            OutOfMapZero,           ///< if out of map, return 0
+            // Warning: with 16 theta dirs, performance is in 16^depth, where depth is in the order of
+            // request_size/(heuristic_costmap_size/2)
+            OutOfMapRecursiveQuery, ///< Split the request in multiple recursive requests along the query
         };
 
         /**
@@ -72,6 +77,8 @@ class HeuristicCostMap
 
         /// Raw access for writing
         unsigned int*** getCostMap(unsigned int theta) { return costmaps_[theta]; }
+
+        unsigned int getCostRecurs(int dx, int dy, int startTheta, int endTheta, int depth) const;
 
     protected:
         int height_;

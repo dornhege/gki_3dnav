@@ -150,6 +150,7 @@ target_link_libraries(flourish_planner
 	${catkin_LIBRARIES}
 	${SBPL_LIBRARIES} 
 	${Boost_LIBRARIES}
+	sbpl_xytheta_planner
 )
 
 

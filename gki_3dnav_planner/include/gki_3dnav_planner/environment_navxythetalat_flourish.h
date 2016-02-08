@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <vector>
+#include "gki_3dnav_planner/environment_navxythetalat_generic.h"
 #include <sbpl/discrete_space_information/environment_navxythetalat.h>
 #include <ros/ros.h>
 #include <moveit/planning_scene/planning_scene.h>
@@ -57,10 +58,10 @@
  * that the grid coordinates are valid for costmap coordinates. These functions
  * would need to use the ...Costmap style function, which convert.
  */
-class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
+class EnvironmentNavXYThetaLatFlourish : public EnvironmentNavXYThetaLatGeneric
 {
  public:
-  EnvironmentNavXYThetaLatFlourish(ros::NodeHandle* nhPriv, Ais3dTools::TraversableMap tMap);
+  EnvironmentNavXYThetaLatFlourish(ros::NodeHandle& nhPriv);
   virtual ~EnvironmentNavXYThetaLatFlourish();
 
   // check if the cell given by indices x, y is inside the map and the height is safe for the robot
@@ -89,10 +90,32 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   // else: returns -1
   virtual int SetGoal(double x_m, double y_m, double theta_rad);
   // sets the parameter on whether we want to use the freespace heuristic
-  bool useFreespaceHeuristic(bool on) { useFreespaceHeuristic_ = on; }
+  // bool useFreespaceHeuristic(bool on) { useFreespaceHeuristic_ = on; }
   // create a new hash entry for the given state
   virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_lookup(int X, int Y, int Theta);
   virtual EnvNAVXYTHETALATHashEntry_t* CreateNewHashEntry_hash(int X, int Y, int Theta);
+
+  /// Update internal representation of the planner for a plan request.
+  /**
+   * Called, whenever makePlan is called. Start and Goal state have already been set and
+   * env_->updateForPlanRequest() has also been called.
+   *
+   * This object will be deleted after the query.
+   *
+   * If possible should return a XYThetaStateChangeQuery that can be passed to the search algorithm.
+   * If NULL is returned, the planner will plan from scratch.
+   */
+  //virtual sbpl_xytheta_planner::XYThetaStateChangeQuery* updateForPlanRequest();
+  virtual void updateForPlanRequest();
+
+  /// Returns the scene's planning frame.
+  virtual std::string getPlanningFrame() const;
+
+  /// Transform a pose in any frame by a suitable method to the planning frame.
+  virtual bool transformPoseToPlanningFrame(geometry_msgs::PoseStamped & pose);
+
+  /// Get the x/y dimensions of the OctoMap.
+  virtual bool getExtents(double& minX, double& maxX, double& minY, double& maxY);
 
   // delete all entries in the full_body_traversability_cost_infos
   virtual void clear_full_body_traversability_cost_infos();
@@ -104,7 +127,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   // TODO check
   void computeWheelPositions();
 
-  moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped>& path) const;
+  virtual moveit_msgs::DisplayTrajectory pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped>& path) const;
   void ConvertStateIDPathintoXYThetaPath(std::vector<int>* stateIDPath, std::vector<sbpl_xy_theta_pt_t>* xythetaPath);
   void resetTimingStats();
   void printTimingStats();
@@ -116,7 +139,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   virtual int GetStartHeuristic(int stateID);
   // get euclidean distance to goal in m
   virtual int GetGoalHeuristic(int stateID);
-  int getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end);
+  //int getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end);
 
   // not doing anything right now
   void EnsureHeuristicsUpdated(bool bGoalHeuristics);
@@ -128,7 +151,7 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   /// Update the planning scene to a custom one.
   virtual void update_planning_scene(planning_scene::PlanningSceneConstPtr scene);
   /// Use this to access the PlanningScene. Never use internal data structures for that.
-  virtual planning_scene::PlanningSceneConstPtr getPlanningScene();
+  virtual planning_scene::PlanningSceneConstPtr getPlanningScene() const;
 
   //int ComputeCosts(int SourceX, int SourceY, int SourceTheta);
 
@@ -174,16 +197,6 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
 			double timetoturn45degsinplace_secs,
 			const std::vector<sbpl_2Dpt_t> & robot_perimeterV);
 
-
-  //sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta) const;
-  //void discreteToContinuous(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c) const;
-  //void discreteXYToContinuous(int x_d, int y_d, double& x_c, double& y_c) const;
-  //void continuousToDiscrete(sbpl_xy_theta_pt_t pose, int& x, int& y, int& theta) const;
-  //void continuousToDiscrete(double x_c, double y_c, double theta_c, int& x, int& y, int& theta) const;
-  //void continuousXYToDiscrete(double x_c, double y_c, int& x, int& y) const;
-  //Eigen::Vector2i continuousXYToDiscrete(Eigen::Vector2f xy_c) const;
-
-  //sbpl_xy_theta_pt_t discreteToContinuous(int x, int y, int theta) const;
   // functions to convert from grid indices to world coordinates (cell center)
   sbpl_xy_theta_pt_t gridToWorld(int x, int y, int theta) const;
   void gridToWorld(int x_d, int y_d, int theta_d, double& x_c, double& y_c, double& theta_c) const;
@@ -197,8 +210,8 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   const FullBodyTraversabilityCost& get_full_body_traversability_cost_info(EnvNAVXYTHETALATHashEntry_t* state);
 
   std::vector<FullBodyTraversabilityCost> full_body_traversability_cost_infos;
-  freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
-  bool useFreespaceHeuristic_;
+  //freespace_mechanism_heuristic::HeuristicCostMap* freespace_heuristic_costmap;
+  //bool useFreespaceHeuristic_;
 
   planning_scene::PlanningScenePtr scene;
   planning_scene_monitor::PlanningSceneMonitorPtr scene_monitor;
@@ -208,14 +221,10 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   ros::Publisher traversable_map_publisher;
   std::vector<std::string> allowed_collision_links;
 
-  //ros::Publisher pose_array_publisher;
-  //ros::Publisher nontravpose_array_publisher;
-
   // offsets to convert costmap coordinates to world coordinates for 3d collision checks
   double mapOffsetX;
   double mapOffsetY;
   Ais3dTools::TraversableMap tMap;
-  //Eigen::Isometry3f baseLinkTofrWheel, baseLinkToflWheel, baseLinkTorrWheel, baseLinkTorlWheel;
   Eigen::Vector3f frWheelInRobotCoordinates, flWheelInRobotCoordinates, rrWheelInRobotCoordinates, rlWheelInRobotCoordinates;
 
   Timing* timeActionCost;
@@ -223,7 +232,6 @@ class EnvironmentNavXYThetaLatFlourish : public EnvironmentNAVXYTHETALAT
   Timing* timeFullBodyCollision;
   Timing* timeConfigCollisionCheck;
   Timing* timeTrafoComputation;
-  Timing* timeHeuristic;
 
   float robotHeight;
   float robotBodyHeight;

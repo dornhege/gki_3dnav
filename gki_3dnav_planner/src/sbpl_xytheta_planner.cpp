@@ -1,5 +1,6 @@
 #include <gki_3dnav_planner/sbpl_xytheta_planner.h>
 #include <nav_msgs/Path.h>
+#include <nav_msgs/OccupancyGrid.h>
 #include <gki_3dnav_planner/PlannerStats.h>
 #include <sbpl/planners/planner.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -11,14 +12,39 @@
 namespace sbpl_xytheta_planner
 {
 
+XYThetaStateChangeQuery::XYThetaStateChangeQuery(EnvironmentNavXYThetaLatGeneric* env,
+        const std::vector<nav2dcell_t> & changedcells) : env_(env)
+{
+    for(std::vector<nav2dcell_t>::const_iterator it = changedcells.begin(); it != changedcells.end(); ++it) {
+        nav2dcell_t cell;
+        cell.x = it->x;
+        cell.y = it->y;
+        changedcells_.push_back(cell);
+    }
+}
+
+const std::vector<int> * XYThetaStateChangeQuery::getPredecessors() const
+{
+    if(predsOfChangedCells_.empty() && !changedcells_.empty())
+        env_->GetPredsofChangedEdges(&changedcells_, &predsOfChangedCells_);
+    return &predsOfChangedCells_;
+}
+
+const std::vector<int> * XYThetaStateChangeQuery::getSuccessors() const
+{
+    if(succsOfChangedCells_.empty() && !changedcells_.empty())
+        env_->GetSuccsofChangedEdges(&changedcells_, &succsOfChangedCells_);
+    return &succsOfChangedCells_;
+}
+
 SBPLXYThetaPlanner::SBPLXYThetaPlanner() :
-        initialized_(false), costmap_ros_(NULL), forward_search_(false), initial_epsilon_(0),
-        env_(NULL), force_scratch_limit_(0), planner_(NULL), allocated_time_(0)
+    initialized_(false), costmap_ros_(NULL), forward_search_(false), initial_epsilon_(0),
+    env_(NULL), force_scratch_limit_(0), planner_(NULL), allocated_time_(0)
 {
 }
 
 SBPLXYThetaPlanner::SBPLXYThetaPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros) :
-        initialized_(false), costmap_ros_(NULL)
+    initialized_(false), costmap_ros_(NULL)
 {
     initialize(name, costmap_ros);
 }
@@ -29,18 +55,16 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
         return;
 
     private_nh_ = new ros::NodeHandle("~/" + name);
-    ros::NodeHandle nh(name);
-
     costmap_ros_ = costmap_ros;
 
     ROS_INFO("Planner Name is %s", name.c_str());
 
-    private_nh_->param("planner_type", planner_type_, std::string("ARAPlanner"));
+    std::string planner_type;
+    private_nh_->param("planner_type", planner_type, std::string("ARAPlanner"));
     private_nh_->param("allocated_time", allocated_time_, 10.0);
     private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
     private_nh_->param("forward_search", forward_search_, bool(false));
     std::string motion_primitive_filename;
-    
     private_nh_->param("motion_primitive_filename", motion_primitive_filename, std::string(""));
     private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
 
@@ -57,20 +81,20 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
         exit(1);
     }
 
-    std::vector<sbpl_2Dpt_t> perimeterptsV;
+    std::vector<sbpl_2Dpt_t> footprintPoints;
     std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
-    perimeterptsV.reserve(footprint.size());
-    for(size_t ii(0); ii < footprint.size(); ++ii) {
+    footprintPoints.reserve(footprint.size());
+    for(size_t i = 0; i < footprint.size(); ++i) {
         sbpl_2Dpt_t pt;
-        pt.x = footprint[ii].x;
-        pt.y = footprint[ii].y;
-        perimeterptsV.push_back(pt);
+        pt.x = footprint[i].x;
+        pt.y = footprint[i].y;
+        footprintPoints.push_back(pt);
     }
 
     bool ret = true;
     try {
         double timeToTurn45Degs = M_PI/4.0/rot_vel;
-        ret = initializeEnvironment(perimeterptsV, trans_vel, timeToTurn45Degs, motion_primitive_filename);
+        ret = initializeEnvironment(footprintPoints, trans_vel, timeToTurn45Degs, motion_primitive_filename);
     } catch(SBPL_Exception& e) {
         ROS_ERROR("SBPL encountered a fatal exception initializing the environment!");
         ret = false;
@@ -81,15 +105,15 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     }
 
     // Search planner creation
-    if ("ARAPlanner" == planner_type_) {
+    if(planner_type == "ARAPlanner") {
         ROS_INFO("Planning with ARA*");
         planner_ = new ARAPlanner(env_, forward_search_);
         dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
-    } else if ("ADPlanner" == planner_type_) {
+    } else if(planner_type == "ADPlanner") {
         ROS_INFO("Planning with AD*");
         planner_ = new ADPlanner(env_, forward_search_);
     } else {
-        ROS_FATAL("Unknown planner type: %s (supported: ARAPlanner or ADPlanner)", planner_type_.c_str());
+        ROS_FATAL("Unknown planner type: %s (supported: ARAPlanner or ADPlanner)", planner_type.c_str());
         exit(1);
     }
 
@@ -98,6 +122,10 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
     traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
     expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
+    pub_expansion_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("expansion_map", 3, true);
+    pub_generation_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("generation_map", 3, true);
+    pub_expansion_first_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("expansion_first_map", 3, true);
+    pub_generation_first_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("generation_first_map", 3, true);
 
     srv_sample_poses_ = private_nh_->advertiseService("sample_valid_poses",
             &SBPLXYThetaPlanner::sampleValidPoses, this);
@@ -133,7 +161,8 @@ bool SBPLXYThetaPlanner::sampleValidPoses(gki_3dnav_planner::SampleValidPoses::R
         gki_3dnav_planner::SampleValidPoses::Response & resp)
 {
     geometry_msgs::Point min, max;
-    env_->getExtents(min.x, max.x, min.y, max.y);
+    if(!env_->getExtents(min.x, max.x, min.y, max.y))
+        return false;
 
     geometry_msgs::Pose pose;
     resp.poses.header.frame_id = getPlanningFrame();
@@ -163,14 +192,15 @@ bool SBPLXYThetaPlanner::sampleValidPoses(gki_3dnav_planner::SampleValidPoses::R
 }
 
 bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
-				  const geometry_msgs::PoseStamped& goalPose,
-				  std::vector<geometry_msgs::PoseStamped>& plan)
+        const geometry_msgs::PoseStamped& goalPose,
+        std::vector<geometry_msgs::PoseStamped>& plan)
 {
     if(!initialized_) {
         ROS_ERROR("Global planner is not initialized");
         return false;
     }
     env_->updateForPlanRequest();
+
     ROS_INFO("Planning frame is %s", getPlanningFrame().c_str());
 
     geometry_msgs::PoseStamped start = startPose;
@@ -178,7 +208,6 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
         ROS_ERROR("Unable to transform start pose into planning frame");
         return false;
     }
-
     geometry_msgs::PoseStamped goal = goalPose;
     if(!env_->transformPoseToPlanningFrame(goal)) {
         ROS_ERROR("Unable to transform goal pose into planning frame");
@@ -192,8 +221,6 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
             goal.pose.position.x, goal.pose.position.y, angles::to_degrees(theta_goal));
 
     int startId = 0;
-
-    planner_->force_planning_from_scratch();
     try {
         int ret = env_->SetStart(start.pose.position.x, start.pose.position.y, theta_start);
         startId = ret;
@@ -217,11 +244,26 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
         return false;
     }
 
-    planner_->force_planning_from_scratch();
-    // TODO also/instead update planner with changed world/states
+    // Test for dynamic updates
+    XYThetaStateChangeQuery* scq = updateForPlanRequest();  // FIXME must this happen before SetStart to
+    // determine that start is valid? Or does updateForPlanRequest need a current start?
+    if(scq == NULL) {
+        planner_->force_planning_from_scratch();
+    } else {
+        try {
+            if(!scq->changedcells_.empty()) {
+                planner_->costs_changed(*scq);
+            }
+            if(scq->changedcells_.size() >= force_scratch_limit_)
+                planner_->force_planning_from_scratch();
+        } catch(SBPL_Exception& e) {
+            ROS_ERROR("SBPL failed to handle StateChangeQuery");
+            return false;
+        }
+        delete scq;
+    }
 
     ROS_INFO("Start state Heur: %d", env_->GetGoalHeuristic(startId));
-
     ROS_DEBUG("allocated time: %.1f, initial eps: %.2f\n", allocated_time_, initial_epsilon_);
     planner_->set_initialsolution_eps(initial_epsilon_);
     planner_->set_search_mode(false);   // TODO
@@ -238,6 +280,7 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
         } else {
             ROS_INFO("Solution not found\n");
             publish_expansions();
+            publish_expansion_map();
             publishStats(solution_cost, 0, start, goal);
             return false;
         }
@@ -287,8 +330,8 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
     publishStats(solution_cost, sbpl_path.size(), start, goal);
     moveit_msgs::DisplayTrajectory traj = env_->pathToDisplayTrajectory(plan);
     traj_pub_.publish(traj);
-
     publish_expansions();
+    publish_expansion_map();
     return true;
 }
 
@@ -354,6 +397,91 @@ void SBPLXYThetaPlanner::publish_expansions()
     }
 
     expansions_publisher_.publish(ma);
+}
+
+void fillGrid(nav_msgs::OccupancyGrid & grid, const std::vector< std::set<int> > & gridDirections, int maxDirections)
+{
+    assert(grid.data.size() == gridDirections.size());
+    for(int i = 0; i < gridDirections.size(); ++i) {
+        double percTheta = (double)gridDirections[i].size()/(double)maxDirections;
+        // TODO color scheme select (costmap? check offsets?)
+        // 100 for lethal
+        // 99 for inscribed
+        // 0 for no obstacle
+        if(gridDirections[i].empty())
+            grid.data[i] = -1;
+        else
+            grid.data[i] = 100.0 * percTheta;
+    }
+}
+
+
+void SBPLXYThetaPlanner::publish_expansion_map()
+{
+    ARAPlanner* pl = dynamic_cast<ARAPlanner*>(planner_);
+    if(!pl)
+        return;
+
+    // setup an empty grid map for the environment
+    std::vector<SBPL_xytheta_mprimitive> prim_vec;
+    double dummy;
+    unsigned char dummyC;
+    int sizeX, sizeY, numThetas;
+    double resolution;
+    // TODO check impl in flourish cfg
+    env_->GetEnvParms(&sizeX, &sizeY, &numThetas,
+            &dummy, &dummy, &dummy,     // start
+            &dummy, &dummy, &dummy,     // goal
+            &resolution, &dummy, &dummy,
+            &dummyC, &prim_vec);
+    double minX, maxX, minY, maxY;
+    env_->getExtents(minX, maxX, minY, maxY);
+    nav_msgs::OccupancyGrid grid;
+    grid.header.frame_id = getPlanningFrame();
+    grid.info.resolution = resolution;
+    grid.info.width = sizeX;
+    grid.info.height = sizeY;
+    grid.info.origin.position.x = minX;
+    grid.info.origin.position.y = minY;
+    grid.info.origin.orientation.w = 1.0;
+    grid.data.resize(grid.info.width * grid.info.height, -1);
+    std::vector< std::set<int> > gridExpansionsDirections(grid.data.size());
+    std::vector< std::set<int> > gridExpansionsFirstDirections(grid.data.size());
+    std::vector< std::set<int> > gridGenerationsDirections(grid.data.size());
+    std::vector< std::set<int> > gridGenerationsFirstDirections(grid.data.size());
+
+    const std::vector< std::vector<int> > & gen_states = pl->get_generated_states();
+    const std::vector< std::vector<int> > & exp_states = pl->get_expanded_states();
+
+    for(int iteration = 0; iteration < exp_states.size(); iteration++) {
+        int state = 0;
+        for(; state < exp_states[iteration].size(); state++) {
+            int x, y, theta;
+            env_->GetCoordFromState(exp_states[iteration][state], x, y, theta);
+            gridExpansionsDirections[x + y * grid.info.width].insert(theta);
+            if(iteration == 0)
+                gridExpansionsFirstDirections[x + y * grid.info.width].insert(theta);
+        }
+    }
+    for(int iteration = 0; iteration < gen_states.size(); iteration++) {
+        int state = 0;
+        for(; state < gen_states[iteration].size(); state++) {
+            int x, y, theta;
+            env_->GetCoordFromState(gen_states[iteration][state], x, y, theta);
+            gridGenerationsDirections[x + y * grid.info.width].insert(theta);
+            if(iteration == 0)
+                gridGenerationsFirstDirections[x + y * grid.info.width].insert(theta);
+        }
+    }
+
+    fillGrid(grid, gridExpansionsDirections, numThetas);
+    pub_expansion_map_.publish(grid);
+    fillGrid(grid, gridExpansionsFirstDirections, numThetas);
+    pub_expansion_first_map_.publish(grid);
+    fillGrid(grid, gridGenerationsDirections, numThetas);
+    pub_generation_map_.publish(grid);
+    fillGrid(grid, gridGenerationsFirstDirections, numThetas);
+    pub_generation_first_map_.publish(grid);
 }
 
 }

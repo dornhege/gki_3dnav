@@ -28,13 +28,6 @@
 #include <boost/foreach.hpp>
 #define forEach BOOST_FOREACH
 
-struct ScopeExit
-{
-  ScopeExit(boost::function<void ()> fn) : function_(fn) { }
-  ~ScopeExit() { function_(); }
-
-  boost::function<void()> function_;
-};
 
 Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
   tf::Vector3 trans = trafo.getOrigin();
@@ -48,16 +41,24 @@ Eigen::Isometry3f stampedTfToIsometry(const tf::StampedTransform& trafo){
   return result;
 }
 
-EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle* nhPriv, Ais3dTools::TraversableMap tMap):
-  tMap(tMap)
+EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHandle& nhPriv):
+  EnvironmentNavXYThetaLatGeneric(nhPriv),
+  robotHeight(1.2),
+  robotBodyHeight(0.2), 
+  robotBodyWidth(2.0), 
+  robotBodyLength(2.0),
+  robotArmLength(0.6),
+  robotMinSafeDistance(0.2),
+  robotSafeHeight(robotHeight - robotMinSafeDistance),
+  count(0),
+  past(0)
 {
-  robotHeight = 1.2;
-  robotBodyHeight = 0.2; 
-  robotBodyWidth = 2.0; 
-  robotBodyLength = 2.0;
-  robotArmLength = 0.6;
-  robotMinSafeDistance = 0.2;
-  robotSafeHeight = robotHeight - robotMinSafeDistance;
+  std::string traversability_map_file;    
+  nhPriv.getParam("traversability_map", traversability_map_file);
+  if(!tMap.loadTraversabilityAndElevation(traversability_map_file.c_str())) {
+    ROS_ERROR("Failed to load traversability map %s", traversability_map_file.c_str());
+  }
+  tMap.computeDistanceMap(); 
 
   Eigen::Vector2f offset;
   tMap.getOffset(offset);
@@ -96,41 +97,33 @@ EnvironmentNavXYThetaLatFlourish::EnvironmentNavXYThetaLatFlourish(ros::NodeHand
   rrWheelInRobotCoordinates = stampedTfToIsometry(baseLinkTorrWheelTransform).translation();
   rlWheelInRobotCoordinates = stampedTfToIsometry(baseLinkTorlWheelTransform).translation();
 
-  nhPriv->param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
+  nhPriv.param("scene_update_name", scene_update_name, move_group::GET_PLANNING_SCENE_SERVICE_NAME);
   scene_monitor.reset(new planning_scene_monitor::PlanningSceneMonitor("robot_description"));
 
-  nhPriv->getParam("allowed_collision_links", allowed_collision_links);
+  nhPriv.getParam("allowed_collision_links", allowed_collision_links);
 
-  wheel_cells_publisher = nhPriv->advertise<visualization_msgs::Marker>("wheelcells", 1, true); 
+  wheel_cells_publisher = nhPriv.advertise<visualization_msgs::Marker>("wheelcells", 1, true); 
   //computeWheelPositions();
 
-  std::string freespace_heuristic_costmap_file;
-  nhPriv->getParam("freespace_heuristic_costmap", freespace_heuristic_costmap_file);
-  if(freespace_heuristic_costmap_file.empty()) {
-    freespace_heuristic_costmap = NULL;
-  } else {
-    freespace_heuristic_costmap = new freespace_mechanism_heuristic::HeuristicCostMap(freespace_heuristic_costmap_file, freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapInfiniteCost);
-  }
-  //update_planning_scene();
 
   //Debug 
-  planning_scene_publisher = nhPriv->advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
-  traversable_map_publisher = nhPriv->advertise<visualization_msgs::Marker>("travmap", 1, true); 
-  //pose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
-  //nontravpose_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
-  nontravaction_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_actions", 1, true);
-  action_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
-  endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
-  nontrav_endtheta_array_publisher = nhPriv->advertise<geometry_msgs::PoseArray>("nontrav_endthetas", 1, true);
+  planning_scene_publisher = nhPriv.advertise<moveit_msgs::PlanningScene>("planning_scene_3dnav", 1, true);
+  traversable_map_publisher = nhPriv.advertise<visualization_msgs::Marker>("travmap", 1, true); 
+  //pose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("expanded_states", 1, true);
+  //nontravpose_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("nontrav_states", 1, true);
+  nontravaction_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("nontrav_actions", 1, true);
+  action_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("possible_actions", 1, true);
+  endtheta_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("endthetas", 1, true);
+  nontrav_endtheta_array_publisher = nhPriv.advertise<geometry_msgs::PoseArray>("nontrav_endthetas", 1, true);
 
-  //plan_subscriber = nhPriv->subscribe("/move_base_node/FlourishPlanner/plan", 100, &EnvironmentNavXYThetaLatFlourish::checkPlanValidity, this);
+  //plan_subscriber = nhPriv.subscribe("/move_base_node/FlourishPlanner/plan", 100, &EnvironmentNavXYThetaLatFlourish::checkPlanValidity, this);
 
   timeActionCost = new Timing("action_cost", true, Timing::SP_STATS, false);
   //timeActionCostParent = new Timing("action_cost_parent", true, Timing::SP_STATS, false);
   timeFullBodyCollision = new Timing("full_body_collision", true, Timing::SP_STATS, false);
   timeConfigCollisionCheck = new Timing("time_config_collision_check", true, Timing::SP_STATS, false);
   timeTrafoComputation = new Timing("time_trafo_computation", true, Timing::SP_STATS, false);
-  timeHeuristic = new Timing("heuristic", true, Timing::SP_STATS, false);
+  //timeHeuristic = new Timing("heuristic", true, Timing::SP_STATS, false);
 
   // Debug
   ///////////////////////////////////////////////////////////////////////////
@@ -211,7 +204,7 @@ EnvironmentNavXYThetaLatFlourish::~EnvironmentNavXYThetaLatFlourish()
   delete timeFullBodyCollision;
   delete timeConfigCollisionCheck;
   delete timeTrafoComputation;
-  delete timeHeuristic;
+  //delete timeHeuristic;
 }
 
 bool EnvironmentNavXYThetaLatFlourish::IsValidCell(int X, int Y){
@@ -415,6 +408,15 @@ EnvNAVXYTHETALATHashEntry_t* EnvironmentNavXYThetaLatFlourish::CreateNewHashEntr
   gridToWorld(X, Y, Theta, x_c, y_c, theta_c);
   return he;
 }
+
+
+void EnvironmentNavXYThetaLatFlourish::updateForPlanRequest(){
+  EnvironmentNavXYThetaLatGeneric::updateForPlanRequest();
+  clear_full_body_traversability_cost_infos();
+  update_planning_scene();
+  //publish_planning_scene();
+}
+
 
 void EnvironmentNavXYThetaLatFlourish::clear_full_body_traversability_cost_infos()
 {
@@ -622,12 +624,13 @@ void EnvironmentNavXYThetaLatFlourish::computeWheelPositions(){
 
 void EnvironmentNavXYThetaLatFlourish::resetTimingStats()
 {
+  EnvironmentNavXYThetaLatGeneric::resetTimingStats();
   timeActionCost->getStats().reset();
   //timeActionCostParent->getStats().reset();
   timeFullBodyCollision->getStats().reset();
   timeConfigCollisionCheck->getStats().reset();
   timeTrafoComputation->getStats().reset();
-  timeHeuristic->getStats().reset();
+  //timeHeuristic->getStats().reset();
 }
 
  void EnvironmentNavXYThetaLatFlourish::printTimingStats()
@@ -642,53 +645,8 @@ void EnvironmentNavXYThetaLatFlourish::resetTimingStats()
 
 moveit_msgs::DisplayTrajectory EnvironmentNavXYThetaLatFlourish::pathToDisplayTrajectory(const std::vector<geometry_msgs::PoseStamped> & path) const
 {
-  moveit_msgs::DisplayTrajectory dtraj;
-  dtraj.model_id = "robot";    // FIXME this is just for matching?
-  if(path.empty())
-    return dtraj;
-
-  tf::StampedTransform baseFootprintToBaseLink;
-  try{
-    tfListener->waitForTransform("/base_footprint", "/base_link",
-				 ros::Time(0), ros::Duration(0.1));
-    tfListener->lookupTransform("/base_footprint", "/base_link",
-				ros::Time(0), baseFootprintToBaseLink);
-  }catch (tf::TransformException ex){
-    ROS_ERROR("%s",ex.what());
-    return dtraj;
-  }
-
-
-  // Do NOT update the scene. This should be the path that we planned with before.
-  moveit::core::robotStateToRobotStateMsg(scene->getCurrentState(), dtraj.trajectory_start);
-  moveit_msgs::RobotTrajectory traj;
-  traj.multi_dof_joint_trajectory.header = path.front().header;   // all poses in path should be in the same frame
-  traj.multi_dof_joint_trajectory.joint_names.push_back("world_joint");
-  tf::Transform lastPose;
-  for(unsigned int i = 0; i < path.size(); ++i) {
-    trajectory_msgs::MultiDOFJointTrajectoryPoint pt;
-    geometry_msgs::Transform tf;
-    tf.translation.x = path[i].pose.position.x;
-    tf.translation.y = path[i].pose.position.y;
-    tf.translation.z = path[i].pose.position.z;// + baseFootprintToBaseLink.getOrigin().z();
-    tf.rotation = path[i].pose.orientation;
-
-    if(i > 0) {
-      tf::Transform curPose;
-      tf::transformMsgToTF(tf, curPose);
-      tf::Transform delta = lastPose.inverseTimes(curPose);
-      if(hypot(delta.getOrigin().x(), delta.getOrigin().y()) < 0.05 &&
-	 fabs(tf::getYaw(delta.getRotation())) < 0.2)
-	continue;
-    }
-
-    pt.transforms.push_back(tf);
-    tf::transformMsgToTF(tf, lastPose);
-
-    traj.multi_dof_joint_trajectory.points.push_back(pt);
-  }
-
-  dtraj.trajectory.push_back(traj);
+  moveit_msgs::DisplayTrajectory dtraj = EnvironmentNavXYThetaLatGeneric::pathToDisplayTrajectory(path);
+  dtraj.model_id = "bonirob_v3";  
   return dtraj;
 }
 
@@ -900,44 +858,6 @@ int EnvironmentNavXYThetaLatFlourish::GetGoalHeuristic(int stateID)
   return heur;
 }
 
-int EnvironmentNavXYThetaLatFlourish::getFreespaceCost(int deltaX, int deltaY, int theta_start, int theta_end){
-  int hfs = 0;
-  if(useFreespaceHeuristic_ && freespace_heuristic_costmap){
-    hfs = freespace_heuristic_costmap->getCost(deltaX, deltaY, theta_start, theta_end);
-    //std::cout << "got first cost " << hfs << std::endl;
-    if(hfs == INFINITECOST){
-      // figure out cell in freespace_heuristic_costmap in the direction of deltaX, deltaY
-      int maxdx = freespace_heuristic_costmap->getWidth()/2-2;
-      int maxdy = freespace_heuristic_costmap->getHeight()/2-2;
-      int signX =  deltaX >= 0? 1 : -1;
-      int signY =  deltaY >= 0? 1 : -1;
-	
-      // y coordinate corresponding to maxdx in direction of deltaX, deltaY, and vice versa
-      int yForMaxdx = deltaX==0? signY*maxdy : (maxdx*deltaY)/abs(deltaX);
-      int xForMaxdy = deltaY==0? signX*maxdx : (maxdy*deltaX)/abs(deltaY);
-      int deltaXInMap = deltaX >= 0? maxdx : -maxdx;
-      int deltaYInMap = yForMaxdx;
-      //std::cout << "step 1: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
-      if(abs(deltaYInMap) > maxdy){
-	deltaXInMap = xForMaxdy;
-	deltaYInMap = deltaY >= 0? maxdy : -maxdy;
-	ROS_ASSERT(abs(xForMaxdy) <= maxdx);
-      }
-      //std::cout << "step 2: maxdx " << maxdx << " maxdy " << maxdy << " yForMaxdx " << yForMaxdx << " xForMaxdy " << xForMaxdy << " deltaXInMap " << deltaXInMap << " deltaYInMap " << deltaYInMap << std::endl;
-      int hdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, 0)
-	+ getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, 0, theta_end);
-      for(size_t i = 1; i < EnvNAVXYTHETALATCfg.NumThetaDirs; ++i){
-	int hnewdelta = freespace_heuristic_costmap->getCost(deltaXInMap, deltaYInMap, theta_start, i)
-	+ getFreespaceCost(deltaX-deltaXInMap, deltaY-deltaYInMap, i, theta_end);
-	if(hnewdelta < hdelta){
-	  hdelta = hnewdelta;
-	}
-      }
-      hfs = hdelta;
-    }
-  }
-  return hfs;
-}
 
 void EnvironmentNavXYThetaLatFlourish::EnsureHeuristicsUpdated(bool bGoalHeuristics){
   std::cerr << "attempting to ensure heuristics are updated" << std::endl;
@@ -1013,9 +933,21 @@ void EnvironmentNavXYThetaLatFlourish::update_planning_scene(planning_scene::Pla
     allowed_collisions.setDefaultEntry(cl, true);
 }
 
-planning_scene::PlanningSceneConstPtr EnvironmentNavXYThetaLatFlourish::getPlanningScene()
-{
+planning_scene::PlanningSceneConstPtr EnvironmentNavXYThetaLatFlourish::getPlanningScene() const{
   return scene;
+}
+
+//TODO get planning frame from somewhere
+std::string EnvironmentNavXYThetaLatFlourish::getPlanningFrame() const{
+  return "odom";
+}
+
+bool EnvironmentNavXYThetaLatFlourish::getExtents(double& minX, double& maxX, double& minY, double& maxY){
+  Eigen::Vector2i mapSize = tMap.size();
+  minX = getMapOffsetX();
+  minY = getMapOffsetY();
+  maxX = getMapOffsetX()+tMap.getResolution()*tMap.size()(0);
+  maxY = getMapOffsetY()+tMap.getResolution()*tMap.size()(1);
 }
 
 void EnvironmentNavXYThetaLatFlourish::publish_planning_scene()
@@ -1026,40 +958,10 @@ void EnvironmentNavXYThetaLatFlourish::publish_planning_scene()
 }
 
 
-/*void EnvironmentNavXYThetaLatFlourish::publish_expanded_states()
-{
-  geometry_msgs::PoseArray msg;
-  geometry_msgs::PoseArray nontravmsg;
-  msg.header.frame_id = getPlanningScene()->getPlanningFrame();
-  nontravmsg.header.frame_id = getPlanningScene()->getPlanningFrame();
-  //msg.header.stamp = ros::Time::now();
-  for (size_t id = 0; id < full_body_traversability_cost_infos.size(); id++){
-    if (full_body_traversability_cost_infos[id].initialized && full_body_traversability_cost_infos[id].cost < INFINITECOST){
-      EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
-      sbpl_xy_theta_pt_t coords = gridToWorld(state->X, state->Y, state->Theta);
-      msg.poses.push_back(geometry_msgs::Pose());
-      geometry_msgs::Pose& pose = msg.poses.back();
-      pose.position.x = coords.x;
-      pose.position.y = coords.y;
-      pose.position.z = 0.1;
-      pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
-      //std::cout << "expanded " << state->X << ", " << state->Y << std::endl;
-    }else if(full_body_traversability_cost_infos[id].initialized){
-      std::cout << "initialized but non-traversable " << std::endl;
-      EnvNAVXYTHETALATHashEntry_t* state = StateID2CoordTable[id];
-      sbpl_xy_theta_pt_t coords = gridToWorld(state->X, state->Y, state->Theta);
-      nontravmsg.poses.push_back(geometry_msgs::Pose());
-      geometry_msgs::Pose& pose = msg.poses.back();
-      pose.position.x = coords.x;
-      pose.position.y = coords.y;
-      pose.position.z = 0.1;
-      pose.orientation = tf::createQuaternionMsgFromYaw(coords.theta);
-      //std::cout << "expanded " << state->X << ", " << state->Y << std::endl;
-    }
-  }
-  pose_array_publisher.publish(msg);
-  nontravpose_array_publisher.publish(nontravmsg);
-  }*/
+bool EnvironmentNavXYThetaLatFlourish::transformPoseToPlanningFrame(geometry_msgs::PoseStamped & pose){
+  ROS_ASSERT(pose.header.frame_id == "odom");
+  return true;
+}
 
 void EnvironmentNavXYThetaLatFlourish::publish_traversable_map(){
   if(tMap.size()(0) == 0 || tMap.size()(1) == 0){
@@ -1411,7 +1313,7 @@ void EnvironmentNavXYThetaLatFlourish::SetConfiguration(int width, int height,
   EnvNAVXYTHETALATCfg.StartTheta = starttheta;
  
   if(EnvNAVXYTHETALATCfg.StartX_c < 0 || EnvNAVXYTHETALATCfg.StartX_c >= EnvNAVXYTHETALATCfg.EnvWidth_c) {
-    SBPL_ERROR("ERROR: illegal start coordinates\n");
+    SBPL_ERROR("ERROR: illegal start coordinate x = %d\n", EnvNAVXYTHETALATCfg.StartX_c);
     throw new SBPL_Exception();
   }
   if(EnvNAVXYTHETALATCfg.StartY_c < 0 || EnvNAVXYTHETALATCfg.StartY_c >= EnvNAVXYTHETALATCfg.EnvHeight_c) {
@@ -1447,29 +1349,8 @@ void EnvironmentNavXYThetaLatFlourish::SetConfiguration(int width, int height,
   EnvNAVXYTHETALATCfg.cellsize_m = cellsize_m;
   EnvNAVXYTHETALATCfg.timetoturn45degsinplace_secs = timetoturn45degsinplace_secs;
 
-
   //allocate the 2D environment. Not used anymore -> Grid2D = NULL
   EnvNAVXYTHETALATCfg.Grid2D = NULL;
-  /*EnvNAVXYTHETALATCfg.Grid2D = new unsigned char* [EnvNAVXYTHETALATCfg.EnvWidth_c];
-    for (int x = 0; x < EnvNAVXYTHETALATCfg.EnvWidth_c; x++) {
-    EnvNAVXYTHETALATCfg.Grid2D[x] = new unsigned char [EnvNAVXYTHETALATCfg.EnvHeight_c];
-    }
-  
-    //environment:
-    if (0 == mapdata) {
-    for (int y = 0; y < EnvNAVXYTHETALATCfg.EnvHeight_c; y++) {
-    for (int x = 0; x < EnvNAVXYTHETALATCfg.EnvWidth_c; x++) {
-    EnvNAVXYTHETALATCfg.Grid2D[x][y] = 0;
-    }
-    }
-    }
-    else {
-    for (int y = 0; y < EnvNAVXYTHETALATCfg.EnvHeight_c; y++) {
-    for (int x = 0; x < EnvNAVXYTHETALATCfg.EnvWidth_c; x++) {
-    EnvNAVXYTHETALATCfg.Grid2D[x][y] = mapdata[x+y*width];
-    }
-    }
-    }*/
 }
 
 
