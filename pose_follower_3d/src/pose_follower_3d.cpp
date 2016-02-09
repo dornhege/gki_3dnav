@@ -143,7 +143,7 @@ namespace pose_follower_3d
     try {
       tf::StampedTransform base_map_transform;
       //TODO: get global frame from somewhere
-      tf_->lookupTransform("odom", "base_footprint", ros::Time(0), base_map_transform);
+      tf_->lookupTransform("map", "base_footprint", ros::Time(0), base_map_transform);
       transformStampedTFToMsg(base_map_transform, geo_pose);
       robot_pose.getOrigin().setX(base_map_transform.getOrigin().x());
       robot_pose.getOrigin().setY(base_map_transform.getOrigin().y());
@@ -182,8 +182,7 @@ namespace pose_follower_3d
 	  //if the point is safe, then first set the recovery plan
 	  std::vector<geometry_msgs::PoseStamped> recovery_plan;
 	  geometry_msgs::PoseStamped pose;
-	  //TODO get global frame id from somewhere
-	  pose.header.frame_id = "odom";
+        pose.header.frame_id = "map";
 	  pose.header.stamp = ros::Time::now();
 	  pose.pose.position.x = robot_x;
 	  pose.pose.position.y = robot_y;
@@ -228,8 +227,7 @@ namespace pose_follower_3d
     tf::Stamped<tf::Pose> robot_pose;
     try {
       tf::StampedTransform base_map_transform;
-      //TODO get global frame id from somewhere
-      tf_->lookupTransform("odom", "base_footprint", ros::Time(0), base_map_transform);
+    tf_->lookupTransform("map", "base_footprint", ros::Time(0), base_map_transform);
       transformStampedTFToMsg(base_map_transform, geo_pose);
       robot_pose.getOrigin().setX(base_map_transform.getOrigin().x());
       robot_pose.getOrigin().setY(base_map_transform.getOrigin().y());
@@ -266,10 +264,9 @@ namespace pose_follower_3d
     std::vector<geometry_msgs::PoseStamped> recovery_plan;
     for(unsigned int i=0; i < req.path.poses.size(); i++)
       {
-	//TODO get global frame id from somewhere
-	if(req.path.poses[i].header.frame_id != "odom")
+      if(req.path.poses[i].header.frame_id != "map")
 	  {
-	    ROS_ERROR("Expected path to be in odom frame");
+	  ROS_ERROR("Expected path to be in map frame");
 	    res.success = false;
 	    return true;
 	  }
@@ -316,7 +313,8 @@ namespace pose_follower_3d
       }
 
       if (j == state->name.size()) {
-	//ROS_WARN_THROTTLE(5, "[jointStatesCallback] Missing the value for planning joint (%s)", rightJointNames_[i].c_str());
+			ROS_WARN("[jointStatesCallback] Missing the value for planning joint (%s)",
+			         rightJointNames_[i].c_str());
       }
       else {
 	rightArmAngles_[i] = state->position[j];
@@ -333,7 +331,8 @@ namespace pose_follower_3d
       }
 
       if (j == state->name.size()) {
-	//ROS_WARN_THROTTLE(5, "[jointStatesCallback] Missing the value for planning joint (%s)", leftJointNames_[i].c_str());
+			ROS_WARN("[jointStatesCallback] Missing the value for planning joint (%s)",
+			         leftJointNames_[i].c_str());
       }
       else {
 	leftArmAngles_[i] = state->position[j];
@@ -347,7 +346,7 @@ namespace pose_follower_3d
     }
 
     if (j == state->name.size()) {
-      //ROS_WARN_THROTTLE(5, "[jointStatesCallback] Missing the value for planning joint torso_lift_joint");
+		ROS_WARN("[jointStatesCallback] Missing the value for planning joint torso_lift_joint");
     }
     else {
       spinePosition_ = state->position[j];
@@ -544,8 +543,7 @@ namespace pose_follower_3d
     //	}
     try {
       tf::StampedTransform base_map_transform;
-      //TODO get global frame id from somewhere
-      tf_->lookupTransform("odom", "base_footprint", ros::Time(0), base_map_transform);
+		tf_->lookupTransform("map", "base_footprint", ros::Time(0), base_map_transform);
 
       //		ROS_INFO("map->base transform quaternion: w= %.3f, x = %.3f, y = %.3f, z = %.3f",
       //		         base_map_transform.getRotation().getW(),
