@@ -25,7 +25,12 @@ void poseArrayCallback(const geometry_msgs::PoseArray & pa)
   psGoal.header = pa.header;
   for(int i = 0; i < pa.poses.size(); ++i) {
     // no reverse queries?
-    for(int j = i + 1; j < pa.poses.size(); ++j) {
+        int j = i + 1;
+        if(g_ReverseQueries)
+            j = 0;
+        for(; j < pa.poses.size(); ++j) {
+            if(i == j)
+                continue;
       psStart.pose = pa.poses[i];
       psGoal.pose = pa.poses[j];
       if(hypot(psStart.pose.position.x - psGoal.pose.position.x,
@@ -59,6 +64,7 @@ void collectData()
     srv.request.start = poseQueries[i].first;
     srv.request.goal = poseQueries[i].second;
     bool err = false;
+        ROS_INFO("Calling plan for query: %d", i);
     if(!ros::service::call("/move_base_node/make_plan", srv) || srv.response.plan.poses.empty()) {
       ROS_ERROR("Could not plan for %d", i);
       // FIXME also no plan found

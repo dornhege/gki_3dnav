@@ -23,7 +23,7 @@ int main(int argc, char** argv)
     else
         srv.request.max_tries = 1000;
 
-    if(!ros::service::call("/move_base_node/FlourishPlanner/sample_valid_poses", srv)) {
+    if(!ros::service::call("/move_base_node/GKI3dNavPlanner/sample_valid_poses", srv)) {
         ROS_ERROR("Could not sample");
         return 1;
     }
