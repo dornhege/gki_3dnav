@@ -121,7 +121,10 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     plan_pub_ = private_nh_->advertise<nav_msgs::Path>("plan", 1);
     stats_publisher_ = private_nh_->advertise<gki_3dnav_planner::PlannerStats>("planner_stats", 10);
     traj_pub_ = private_nh_->advertise<moveit_msgs::DisplayTrajectory>("trajectory", 5);
+
     expansions_publisher_ = private_nh_->advertise<visualization_msgs::MarkerArray>("expansions", 3, true);
+
+    private_nh_->param("expansion_color_scheme", expansion_color_scheme_, std::string("costmap"));
     pub_expansion_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("expansion_map", 3, true);
     pub_generation_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("generation_map", 3, true);
     pub_expansion_first_map_ = private_nh_->advertise<nav_msgs::OccupancyGrid>("expansion_first_map", 3, true);
@@ -399,19 +402,31 @@ void SBPLXYThetaPlanner::publish_expansions()
     expansions_publisher_.publish(ma);
 }
 
-void fillGrid(nav_msgs::OccupancyGrid & grid, const std::vector< std::set<int> > & gridDirections, int maxDirections)
+void SBPLXYThetaPlanner::fillGrid(nav_msgs::OccupancyGrid & grid, const std::vector< std::set<int> > & gridDirections, int maxDirections)
 {
     assert(grid.data.size() == gridDirections.size());
     for(int i = 0; i < gridDirections.size(); ++i) {
-        double percTheta = (double)gridDirections[i].size()/(double)maxDirections;
-        // TODO color scheme select (costmap? check offsets?)
-        // 100 for lethal
-        // 99 for inscribed
-        // 0 for no obstacle
-        if(gridDirections[i].empty())
-            grid.data[i] = -1;
-        else
-            grid.data[i] = 100.0 * percTheta;
+        if(expansion_color_scheme_ == "costmap") {
+            // 100 for lethal
+            // 99 for inscribed
+            // 0 for no obstacle
+            if(gridDirections[i].empty())
+                grid.data[i] = 0;
+            else if(gridDirections[i].size() == maxDirections)
+                grid.data[i] = 100;
+            else if(gridDirections[i].size() == maxDirections - 1)
+                grid.data[i] = 99;
+            else {
+                double percTheta = (double)(gridDirections[i].size())/(double)(maxDirections - 2);
+                grid.data[i] = 98.0 * percTheta;
+            }
+        } else {
+            double percTheta = (double)gridDirections[i].size()/(double)maxDirections;
+            if(gridDirections[i].empty())
+                grid.data[i] = -1;
+            else
+                grid.data[i] = 100.0 * percTheta;
+        }
     }
 }
 

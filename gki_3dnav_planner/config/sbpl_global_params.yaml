@@ -6,6 +6,8 @@ GKI3dNavPlanner:
   forward_search: true
   use_freespace_heuristic: true
   track_expansions: true
+  #expansion_color_scheme: occupancy
+  expansion_color_scheme: costmap
 
   scene_update_name: /get_planning_scene
   allowed_collision_links:

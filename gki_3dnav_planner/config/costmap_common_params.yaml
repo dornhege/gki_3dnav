@@ -1,6 +1,4 @@
 #START VOXEL STUFF
-plugins: 
-    - {name: obstacles,        type: "costmap_2d::VoxelLayer"}
 map_type: voxel
 origin_z: 0.0
 z_resolution: 0.2

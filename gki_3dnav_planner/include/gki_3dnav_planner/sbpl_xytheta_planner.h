@@ -76,6 +76,8 @@ protected:
     virtual void publish_expansions();
     virtual void publish_expansion_map();
 
+    virtual void fillGrid(nav_msgs::OccupancyGrid & grid, const std::vector< std::set<int> > & gridDirections, int maxDirections);
+
 protected:
     bool initialized_;
     ros::NodeHandle* private_nh_;
@@ -96,6 +98,7 @@ protected:
     ros::Publisher stats_publisher_;
     ros::Publisher expansions_publisher_;
 
+    std::string expansion_color_scheme_;    ///< occupancy or costmap
     ros::Publisher pub_expansion_map_;
     ros::Publisher pub_generation_map_;
     ros::Publisher pub_expansion_first_map_;
