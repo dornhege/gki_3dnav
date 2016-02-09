@@ -23,18 +23,17 @@ int main(int argc, char** argv)
     else
         srv.request.max_tries = 1000;
 
-    if(!ros::service::call("/move_base_node/GKI3dNavPlanner/sample_valid_poses", srv)) {
+    if(!ros::service::call("/move_base_node/FlourishPlanner/sample_valid_poses", srv)) {
         ROS_ERROR("Could not sample");
         return 1;
     }
 
-    while(pubPoses.getNumSubscribers() < 0) {
+    while(pubPoses.getNumSubscribers() <= 0) {
         ros::spinOnce();
         ros::Duration(0.1).sleep();
     }
 
     pubPoses.publish(srv.response.poses);
-
     ros::Duration(1.0).sleep();
 }
 
