@@ -24,25 +24,25 @@ void poseArrayCallback(const geometry_msgs::PoseArray & pa)
   psStart.header = pa.header;
   psGoal.header = pa.header;
   for(int i = 0; i < pa.poses.size(); ++i) {
-    // no reverse queries?
-        int j = i + 1;
-        if(g_ReverseQueries)
-            j = 0;
-        for(; j < pa.poses.size(); ++j) {
-            if(i == j)
-                continue;
-      psStart.pose = pa.poses[i];
-      psGoal.pose = pa.poses[j];
-      if(hypot(psStart.pose.position.x - psGoal.pose.position.x,
-	       psStart.pose.position.y - psGoal.pose.position.y) < minDist
-	 || hypot(psStart.pose.position.x - psGoal.pose.position.x,
-		  psStart.pose.position.y - psGoal.pose.position.y) > maxDist){
-	std::cout << "Poses too close together or too far apart. Skipping." << std::endl;
-	continue;
+      // no reverse queries?
+      int j = i + 1;
+      if(g_ReverseQueries)
+          j = 0;
+      for(; j < pa.poses.size(); ++j) {
+          if(i == j)
+              continue;
+          psStart.pose = pa.poses[i];
+          psGoal.pose = pa.poses[j];
+          if(hypot(psStart.pose.position.x - psGoal.pose.position.x,
+                      psStart.pose.position.y - psGoal.pose.position.y) < minDist
+                  || hypot(psStart.pose.position.x - psGoal.pose.position.x,
+                      psStart.pose.position.y - psGoal.pose.position.y) > maxDist){
+              std::cout << "Poses too close together or too far apart. Skipping." << std::endl;
+              continue;
+          }
+          std::cout << "adding pose query." << std::endl;
+          poseQueries.push_back(std::make_pair(psStart, psGoal));
       }
-      std::cout << "pushing query." << std::endl;
-      poseQueries.push_back(std::make_pair(psStart, psGoal));
-    }
   }
 }
 
@@ -76,11 +76,11 @@ void collectData()
       ros::Duration(0.1).sleep();
       count++;
       if(count > 10) {
-	if(err) {
-	  ROS_INFO("Inserting empty stats");
-	  g_Stats.push_back(gki_3dnav_planner::PlannerStats());
-	  break;
-	}
+  if(err) {
+    ROS_INFO("Inserting empty stats");
+    g_Stats.push_back(gki_3dnav_planner::PlannerStats());
+    break;
+  }
       }
     }
   }
@@ -109,10 +109,66 @@ void yamlPose(YAML::Emitter & emitter, const geometry_msgs::PoseStamped & ps)
     emitter << YAML::EndMap;
 }
 
+class ParameterRun
+{
+    public:
+        std::string paramName;
+        XmlRpc::XmlRpcValue parameter;
+
+        std::vector<gki_3dnav_planner::PlannerStats> planner_stats;
+
+        static std::vector<ParameterRun> setupRuns(const std::string & paramName,
+                const std::vector<std::string> & paramValues) {
+            std::vector<ParameterRun> runs;
+
+            XmlRpc::XmlRpcValue param;
+            if(!ros::param::get(paramName, param)) {
+                ROS_ERROR("Could not get parameter %s to setup runs.", paramName.c_str());
+                return runs;
+            }
+
+            ParameterRun run;
+            run.paramName = paramName;
+
+            if(param.getType() == XmlRpc::XmlRpcValue::TypeBoolean) {
+                if(!paramValues.empty()) {
+                    ROS_WARN("Ignoring param values for bool param");
+                }
+                run.parameter = XmlRpc::XmlRpcValue(true);
+                runs.push_back(run);
+                run.parameter = XmlRpc::XmlRpcValue(false);
+                runs.push_back(run);
+            } else if(param.getType() == XmlRpc::XmlRpcValue::TypeInt) {
+                forEach(const std::string & paramStr, paramValues) {
+                    std::stringstream ss(paramStr);
+                    int val;
+                    ss >> val;
+                    run.parameter = XmlRpc::XmlRpcValue(val);
+                    runs.push_back(run);
+                }
+            } else if(param.getType() == XmlRpc::XmlRpcValue::TypeDouble) {
+                forEach(const std::string & paramStr, paramValues) {
+                    std::stringstream ss(paramStr);
+                    double val;
+                    ss >> val;
+                    run.parameter = XmlRpc::XmlRpcValue(val);
+                    runs.push_back(run);
+                }
+            } else if(param.getType() == XmlRpc::XmlRpcValue::TypeString) {
+                forEach(const std::string & paramStr, paramValues) {
+                    run.parameter = XmlRpc::XmlRpcValue(paramStr);
+                    runs.push_back(run);
+                }
+            }
+        }
+};
+
+
 int main(int argc, char** argv)
 {
-  if(argc != 5){
-    std::cout << "Usage: " << argv[0] << " <BaseGlobalPlanner name> <parametername> <minDist> <maxDist>";
+  if(argc < 5){
+    std::cout << "Usage: " << argv[0] << " <BaseGlobalPlanner name> <parametername> <minDist> <maxDist> [paramValue1 paramValue2 ...]" << std::endl;
+    std::cout << "Note: parameter values are ignored for Boolean params and otherwise converted to the type of the ROS parameter that is set on the server. Thus for non-Boolean parameters it is necessary that the respective value is already on the parameter server." << std::endl;
     return 1;
   }
 
@@ -123,6 +179,14 @@ int main(int argc, char** argv)
   std::string parameterName(argv[2]);
   minDist = atof(argv[3]);
   maxDist = atof(argv[4]);
+  std::vector<std::string> paramValues;
+  for(int pInd = 5; pInd < argc; pInd++) {
+      paramValues.push_back(argv[pInd]);
+  }
+
+  std::stringstream parameterRosName;
+  parameterRosName << "/move_base_node/" << plannerName << "/" << parameterName;
+  std::vector<ParameterRun> param_runs = ParameterRun::setupRuns(parameterRosName.str(), paramValues);
 
   ros::Subscriber subPoses = nh.subscribe("/valid_poses", 3, poseArrayCallback);
   std::cout << "subscribed to valid poses" << std::endl;
@@ -136,107 +200,72 @@ int main(int argc, char** argv)
     rate.sleep();
   }
 
-  std::stringstream parameterRosName;
-  parameterRosName << "/move_base_node/" << plannerName << "/" << parameterName;
-  std::vector<gki_3dnav_planner::PlannerStats> param_false_stats;
-  ros::param::set(parameterRosName.str(), false);
-  collectData();
-  param_false_stats = g_Stats;
-
-  std::vector<gki_3dnav_planner::PlannerStats> param_true_stats;
-  ros::param::set(parameterRosName.str(), true);
-  collectData();
-  param_true_stats = g_Stats;
-
-  std::stringstream paramFalse;
-  paramFalse << parameterName << "_false_stats";
-
-  if(poseQueries.size() != param_true_stats.size()) {
-    ROS_ERROR("poseQueries size %zu != %s_true_stats size %zu", poseQueries.size(), parameterName.c_str(), param_true_stats.size());
-  }
-  if(poseQueries.size() != param_false_stats.size()) {
-    ROS_ERROR("poseQueries size %zu != %s_false_stats size %zu", poseQueries.size(), parameterName.c_str(), param_false_stats.size());
+  forEach(ParameterRun & run, param_runs) {
+      ros::param::set(run.paramName, run.parameter);
+      collectData();
+      run.planner_stats = g_Stats;
   }
 
   YAML::Emitter emitter;
   emitter << YAML::BeginMap;
   emitter << YAML::Key;
-  emitter << paramFalse.str();
+  emitter << parameterRosName.str();
   emitter << YAML::Value;
-  emitter << YAML::BeginSeq;
-  int stat_index = 0;
-  forEach(const gki_3dnav_planner::PlannerStats & ps, param_false_stats) {
-    emitter << YAML::BeginMap;
-    if(stat_index < poseQueries.size()) {
+
+  emitter << YAML::BeginMap;
+  forEach(ParameterRun & run, param_runs) {
+      if(poseQueries.size() != run.planner_stats.size()) {
+          ROS_ERROR("poseQueries size %zu != %s planner_stats size %zu",
+                  poseQueries.size(), parameterName.c_str(), run.planner_stats.size());
+      }
+
       emitter << YAML::Key;
-      emitter << "start_pose";
+      if(run.parameter.getType() == XmlRpc::XmlRpcValue::TypeBoolean) {
+          bool isOn = run.parameter;
+          emitter << (isOn ? "true" : "false");  // be a bit nicer with bools, otherwise 1, 0
+      } else {
+          std::stringstream paramValueStr;
+          run.parameter.write(paramValueStr);
+          emitter << paramValueStr.str();
+      }
+
       emitter << YAML::Value;
-      yamlPose(emitter, poseQueries[stat_index].first);
-      emitter << YAML::Key;
-      emitter << "goal_pose";
-      emitter << YAML::Value;
-      yamlPose(emitter, poseQueries[stat_index].second);
-    }
-    emitter << YAML::Key;
-    emitter << "planner_stats";
-    emitter << YAML::Value;
-    emitter << YAML::BeginSeq;
-    forEach(const gki_3dnav_planner::PlannerStat & pss, ps.stats) {
-      emitter << YAML::BeginMap;
-      writeKeyVal(emitter, "eps", pss.eps);
-      writeKeyVal(emitter, "suboptimality", pss.suboptimality);
-      writeKeyVal(emitter, "g", pss.g);
-      writeKeyVal(emitter, "cost", pss.cost);
-      writeKeyVal(emitter, "time", pss.time);
-      writeKeyVal(emitter, "expands", pss.expands);
-      emitter << YAML::EndMap;
-    }
-    emitter << YAML::EndSeq;
-    emitter << YAML::EndMap;
-    stat_index++;
+      emitter << YAML::BeginSeq;
+      int stat_index = 0;
+      forEach(const gki_3dnav_planner::PlannerStats & ps, run.planner_stats) {
+          emitter << YAML::BeginMap;
+          if(stat_index < poseQueries.size()) {
+              emitter << YAML::Key;
+              emitter << "start_pose";
+              emitter << YAML::Value;
+              yamlPose(emitter, poseQueries[stat_index].first);
+              emitter << YAML::Key;
+              emitter << "goal_pose";
+              emitter << YAML::Value;
+              yamlPose(emitter, poseQueries[stat_index].second);
+          }
+          emitter << YAML::Key;
+          emitter << "planner_stats";
+          emitter << YAML::Value;
+          emitter << YAML::BeginSeq;
+          forEach(const gki_3dnav_planner::PlannerStat & pss, ps.stats) {
+              emitter << YAML::BeginMap;
+              writeKeyVal(emitter, "eps", pss.eps);
+              writeKeyVal(emitter, "suboptimality", pss.suboptimality);
+              writeKeyVal(emitter, "g", pss.g);
+              writeKeyVal(emitter, "cost", pss.cost);
+              writeKeyVal(emitter, "time", pss.time);
+              writeKeyVal(emitter, "expands", pss.expands);
+              emitter << YAML::EndMap;
+          }
+          emitter << YAML::EndSeq;
+          emitter << YAML::EndMap;
+          stat_index++;
+      }
+      emitter << YAML::EndSeq;
   }
-  emitter << YAML::EndSeq;
+  emitter << YAML::EndMap;
 
-  std::stringstream paramTrue;
-  paramTrue << parameterName << "_true_stats";
-  stat_index = 0;
-
-  emitter << YAML::Key;
-  emitter << paramTrue.str();
-  emitter << YAML::Value;
-  emitter << YAML::BeginSeq;
-  forEach(const gki_3dnav_planner::PlannerStats & ps, param_true_stats) {
-    emitter << YAML::BeginMap;
-    if(stat_index < poseQueries.size()) {
-      emitter << YAML::Key;
-      emitter << "start_pose";
-      emitter << YAML::Value;
-      yamlPose(emitter, poseQueries[stat_index].first);
-      emitter << YAML::Key;
-      emitter << "goal_pose";
-      emitter << YAML::Value;
-      yamlPose(emitter, poseQueries[stat_index].second);
-    }
-    emitter << YAML::Key;
-    emitter << "planner_stats";
-    emitter << YAML::Value;
-    emitter << YAML::BeginSeq;
-
-    forEach(const gki_3dnav_planner::PlannerStat & pss, ps.stats) {
-      emitter << YAML::BeginMap;
-      writeKeyVal(emitter, "eps", pss.eps);
-      writeKeyVal(emitter, "suboptimality", pss.suboptimality);
-      writeKeyVal(emitter, "g", pss.g);
-      writeKeyVal(emitter, "cost", pss.cost);
-      writeKeyVal(emitter, "time", pss.time);
-      writeKeyVal(emitter, "expands", pss.expands);
-      emitter << YAML::EndMap;
-    }
-    emitter << YAML::EndSeq;
-    emitter << YAML::EndMap;
-    stat_index++;
-  }
-  emitter << YAML::EndSeq;
   emitter << YAML::EndMap;
 
   FILE* f = fopen("evaluate_pose_queries.yaml", "w");
