@@ -38,13 +38,13 @@ const std::vector<int> * XYThetaStateChangeQuery::getSuccessors() const
 }
 
 SBPLXYThetaPlanner::SBPLXYThetaPlanner() :
-    initialized_(false), costmap_ros_(NULL), forward_search_(false), initial_epsilon_(0),
+    initialized_(false), costmap_ros_(NULL), initial_epsilon_(0),
     env_(NULL), force_scratch_limit_(0), planner_(NULL), allocated_time_(0)
 {
 }
 
 SBPLXYThetaPlanner::SBPLXYThetaPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros) :
-    initialized_(false), costmap_ros_(NULL)
+    initialized_(false), planner_(NULL), env_(NULL), costmap_ros_(NULL)
 {
     initialize(name, costmap_ros);
 }
@@ -54,65 +54,18 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     if(initialized_)
         return;
 
+    ROS_INFO("Planner Name is %s", name.c_str());
     private_nh_ = new ros::NodeHandle("~/" + name);
     costmap_ros_ = costmap_ros;
 
-    ROS_INFO("Planner Name is %s", name.c_str());
-
-    std::string planner_type;
-    private_nh_->param("planner_type", planner_type, std::string("ARAPlanner"));
-    private_nh_->param("forward_search", forward_search_, bool(false));
-    std::string motion_primitive_filename;
-    private_nh_->param("motion_primitive_filename", motion_primitive_filename, std::string(""));
-
-    double trans_vel, rot_vel;
-    private_nh_->param("trans_vel", trans_vel, 0.4);
-    private_nh_->param("rot_vel", rot_vel, 1.3);
-    bool track_expansions;
-    private_nh_->param("track_expansions", track_expansions, false);
-
     readDynamicParameters();
 
-    // Environment creation and initialization
-    env_ = createEnvironment(*private_nh_);
-    if(env_ == NULL) {
-        ROS_FATAL("Failed to create environment.");
+    if(!createAndInitializeEnvironment()) {
+        ROS_FATAL("Environment creation or initialization failed!");
         exit(1);
     }
-
-    std::vector<sbpl_2Dpt_t> footprintPoints;
-    std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
-    footprintPoints.reserve(footprint.size());
-    for(size_t i = 0; i < footprint.size(); ++i) {
-        sbpl_2Dpt_t pt;
-        pt.x = footprint[i].x;
-        pt.y = footprint[i].y;
-        footprintPoints.push_back(pt);
-    }
-
-    bool ret = true;
-    try {
-        double timeToTurn45Degs = M_PI/4.0/rot_vel;
-        ret = initializeEnvironment(footprintPoints, trans_vel, timeToTurn45Degs, motion_primitive_filename);
-    } catch(SBPL_Exception& e) {
-        ROS_ERROR("SBPL encountered a fatal exception initializing the environment!");
-        ret = false;
-    }
-    if(!ret) {
-        ROS_ERROR("SBPL initialization failed!");
-        exit(1);
-    }
-
-    // Search planner creation
-    if(planner_type == "ARAPlanner") {
-        ROS_INFO("Planning with ARA*");
-        planner_ = new ARAPlanner(env_, forward_search_);
-        dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
-    } else if(planner_type == "ADPlanner") {
-        ROS_INFO("Planning with AD*");
-        planner_ = new ADPlanner(env_, forward_search_);
-    } else {
-        ROS_FATAL("Unknown planner type: %s (supported: ARAPlanner or ADPlanner)", planner_type.c_str());
+    if(!createPlanner()) {
+        ROS_FATAL("Failed to create search planner!");
         exit(1);
     }
 
@@ -134,6 +87,69 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
 
     srand48(time(NULL));
     initialized_ = true;
+}
+
+bool SBPLXYThetaPlanner::createAndInitializeEnvironment()
+{
+    // Environment creation and initialization
+    ROS_ASSERT(env_ == NULL);
+    env_ = createEnvironment(*private_nh_);
+    if(env_ == NULL) {
+        ROS_ERROR("Failed to create environment.");
+        return false;
+    }
+
+    std::vector<sbpl_2Dpt_t> footprintPoints;
+    std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
+    footprintPoints.reserve(footprint.size());
+    for(size_t i = 0; i < footprint.size(); ++i) {
+        sbpl_2Dpt_t pt;
+        pt.x = footprint[i].x;
+        pt.y = footprint[i].y;
+        footprintPoints.push_back(pt);
+    }
+
+    double trans_vel, rot_vel;
+    private_nh_->param("trans_vel", trans_vel, 0.4);
+    private_nh_->param("rot_vel", rot_vel, 1.3);
+    std::string motion_primitive_filename;
+    private_nh_->param("motion_primitive_filename", motion_primitive_filename, std::string(""));
+
+    bool ret = true;
+    try {
+        double timeToTurn45Degs = M_PI/4.0/rot_vel;
+        ret = initializeEnvironment(footprintPoints, trans_vel, timeToTurn45Degs, motion_primitive_filename);
+    } catch(SBPL_Exception& e) {
+        ROS_ERROR("SBPL encountered a fatal exception initializing the environment!");
+        ret = false;
+    }
+    return ret;
+}
+
+bool SBPLXYThetaPlanner::createPlanner()
+{
+    ROS_ASSERT(env_ != NULL);
+    ROS_ASSERT(planner_ == NULL);
+
+    std::string planner_type;
+    private_nh_->param("planner_type", planner_type, std::string("ARAPlanner"));
+    bool forward_search;    // TODO check
+    private_nh_->param("forward_search", forward_search, false);
+    bool track_expansions;
+    private_nh_->param("track_expansions", track_expansions, false);
+
+    if(planner_type == "ARAPlanner") {
+        ROS_INFO("Planning with ARA*");
+        planner_ = new ARAPlanner(env_, forward_search);
+        dynamic_cast<ARAPlanner*>(planner_)->set_track_expansions(track_expansions);
+    } else if(planner_type == "ADPlanner") {
+        ROS_INFO("Planning with AD*");
+        planner_ = new ADPlanner(env_, forward_search);
+    } else {
+        ROS_ERROR("Unknown planner type: %s (supported: ARAPlanner or ADPlanner)", planner_type.c_str());
+        return false;
+    }
+    return true;
 }
 
 std::string SBPLXYThetaPlanner::getPlanningFrame() const

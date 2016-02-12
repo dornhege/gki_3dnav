@@ -58,6 +58,12 @@ public:
 protected:
     virtual bool sampleValidPoses(gki_3dnav_planner::SampleValidPoses::Request & req, gki_3dnav_planner::SampleValidPoses::Response & resp);
 
+    /// Make sure that a ready to use environment exists.
+    virtual bool createAndInitializeEnvironment();
+
+    /// Make sure there is a planner instance.
+    virtual bool createPlanner();
+
     /// Create a custom environment for this planner.
     virtual EnvironmentNavXYThetaLatGeneric* createEnvironment(ros::NodeHandle & nhPriv) = 0;
     virtual bool initializeEnvironment(const std::vector<sbpl_2Dpt_t> & footprint,
@@ -90,8 +96,6 @@ protected:
 
     double allocated_time_;
     double initial_epsilon_;
-
-    bool forward_search_;       /// TODO check
     int force_scratch_limit_;   ///< if the number of changed cells is >= this, planning from scratch will happen
 
     costmap_2d::Costmap2DROS* costmap_ros_;
