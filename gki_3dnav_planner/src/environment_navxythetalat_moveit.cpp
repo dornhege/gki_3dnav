@@ -162,9 +162,7 @@ int EnvironmentNavXYThetaLatMoveit::GetActionCost(int SourceX, int SourceY, int 
 // TODO octomap vs. costmap extends -> This should be extents of underlying grid
 bool EnvironmentNavXYThetaLatMoveit::getExtents(double & minX, double & maxX, double & minY, double & maxY)
 {
-    clear_full_body_collision_infos();    // TODO how is the matching states cleared ever? how is a new planning query started in general (i.e. reset all states, force planning from scratch in env?)
-    // Why do we even need this here? For update_planning_scene()? Then that should clear!
-    update_planning_scene();
+    update_planning_scene();    // get current octomap
     planning_scene::PlanningSceneConstPtr scene = getPlanningScene();
     collision_detection::CollisionWorld::ObjectConstPtr octomapObj = scene->getWorld()->getObject(planning_scene::PlanningScene::OCTOMAP_NS);
     if(!octomapObj)
@@ -184,7 +182,6 @@ bool EnvironmentNavXYThetaLatMoveit::getExtents(double & minX, double & maxX, do
 void EnvironmentNavXYThetaLatMoveit::updateForPlanRequest()
 {
     EnvironmentNavXYThetaLatGeneric::updateForPlanRequest();
-    clear_full_body_collision_infos();
     update_planning_scene();
     publish_planning_scene();
 }
@@ -203,6 +200,9 @@ void EnvironmentNavXYThetaLatMoveit::update_planning_scene()
     collision_detection::AllowedCollisionMatrix & allowed_collisions = scene->getAllowedCollisionMatrixNonConst();
     forEach(const std::string & cl, allowed_collision_links)
         allowed_collisions.setDefaultEntry(cl, true);
+
+    // cached entries aren't valid any more.
+    clear_full_body_collision_infos();
 }
 
 void EnvironmentNavXYThetaLatMoveit::update_planning_scene(planning_scene::PlanningSceneConstPtr scn)
@@ -212,6 +212,8 @@ void EnvironmentNavXYThetaLatMoveit::update_planning_scene(planning_scene::Plann
     collision_detection::AllowedCollisionMatrix & allowed_collisions = scene->getAllowedCollisionMatrixNonConst();
     forEach(const std::string & cl, allowed_collision_links)
         allowed_collisions.setDefaultEntry(cl, true);
+
+    clear_full_body_collision_infos();
 }
 
 planning_scene::PlanningSceneConstPtr EnvironmentNavXYThetaLatMoveit::getPlanningScene() const
