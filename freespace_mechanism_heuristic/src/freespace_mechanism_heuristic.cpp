@@ -36,6 +36,32 @@ HeuristicCostMap::~HeuristicCostMap()
     deallocateMaps();
 }
 
+enum HeuristicCostMap::OutOfMapBehavior HeuristicCostMap::getOutOfMapBehaviorFromString(
+        const std::string & behavior_name)
+{
+    enum OutOfMapBehavior out_of_map_behavior;
+    if(behavior_name == "max_cost") {
+        out_of_map_behavior = HeuristicCostMap::OutOfMapMaxCost;
+    } else if(behavior_name == "infinite_cost") {
+        out_of_map_behavior = HeuristicCostMap::OutOfMapInfiniteCost;
+    } else if(behavior_name == "assert") {
+        out_of_map_behavior = HeuristicCostMap::OutOfMapAssert;
+    } else if(behavior_name == "zero") {
+        out_of_map_behavior = HeuristicCostMap::OutOfMapZero;
+    } else if(behavior_name == "euclidean_prepend") {
+        out_of_map_behavior = HeuristicCostMap::OutOfMapExpandEuclideanPrepend;
+    } else if(behavior_name == "euclidean_append") {
+        out_of_map_behavior = HeuristicCostMap::OutOfMapExpandEuclideanAppend;
+    } else if(behavior_name == "recursive_query") {
+        out_of_map_behavior = HeuristicCostMap::OutOfMapRecursiveQuery;
+    } else {
+        ROS_ERROR("Unknown OutOfMapBehavior type: %s - using euclidean_append",
+                behavior_name.c_str());
+        out_of_map_behavior = HeuristicCostMap::OutOfMapExpandEuclideanAppend;
+    }
+    return out_of_map_behavior;
+}
+
 void HeuristicCostMap::allocateMaps()
 {
     assert(costmaps_.empty());

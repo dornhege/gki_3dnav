@@ -23,9 +23,14 @@ EnvironmentNavXYThetaLatGeneric::EnvironmentNavXYThetaLatGeneric(ros::NodeHandle
     } else {
         ROS_INFO("Loading freespace costmap from %s and enabling useFreespaceHeuristic.",
                 freespace_heuristic_costmap_file.c_str());
+        // see HeuristicCostMap::getOutOfMapBehaviorFromString for values
+        std::string freespace_costmap_out_of_map_behavior;
+        nhPriv.param("freespace_costmap_out_of_map_behavior", freespace_costmap_out_of_map_behavior,
+                std::string("euclidean_append"));
         freespace_heuristic_costmap = new freespace_mechanism_heuristic::HeuristicCostMap(
                 freespace_heuristic_costmap_file,
-                freespace_mechanism_heuristic::HeuristicCostMap::OutOfMapExpandEuclideanAppend);
+                freespace_mechanism_heuristic::HeuristicCostMap::getOutOfMapBehaviorFromString(
+                    freespace_costmap_out_of_map_behavior));
         useFreespaceHeuristic_ = true;
     }
 
@@ -52,6 +57,17 @@ void EnvironmentNavXYThetaLatGeneric::updateForPlanRequest()
 {
     nhPriv_.getParam("use_freespace_heuristic", useFreespaceHeuristic_);
     useFreespaceHeuristic(useFreespaceHeuristic_);
+
+    if(freespace_heuristic_costmap) {
+        std::string freespace_costmap_out_of_map_behavior;
+        if(nhPriv_.getParam("freespace_costmap_out_of_map_behavior", freespace_costmap_out_of_map_behavior)) {
+            ROS_INFO("Switching freespace_costmap_out_of_map_behavior to %s",
+                    freespace_costmap_out_of_map_behavior.c_str());
+            freespace_heuristic_costmap->setOutOfMapBehavior(
+                    freespace_mechanism_heuristic::HeuristicCostMap::getOutOfMapBehaviorFromString(
+                        freespace_costmap_out_of_map_behavior));
+        }
+    }
 }
 
 int EnvironmentNavXYThetaLatGeneric::GetFromToHeuristic(int FromStateID, int ToStateID)

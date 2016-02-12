@@ -5,7 +5,9 @@ GKI3dNavPlanner:
   initial_epsilon: 5.0
   forward_search: true
   use_freespace_heuristic: true
+  freespace_costmap_out_of_map_behavior: euclidean_append
   track_expansions: true
+  force_scratch_limit: 0
   #expansion_color_scheme: occupancy
   expansion_color_scheme: costmap
 

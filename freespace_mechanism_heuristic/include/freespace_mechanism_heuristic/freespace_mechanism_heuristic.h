@@ -42,6 +42,14 @@ class HeuristicCostMap
         HeuristicCostMap(const std::string & mapfile, enum OutOfMapBehavior outOfMapBehaviour);
         ~HeuristicCostMap();
 
+        void setOutOfMapBehavior(enum OutOfMapBehavior oomb) { outOfMapBehaviour_ = oomb; }
+
+        /// Get the OutOfMapBehavior setting from a string.
+        /**
+         * Values are: max_cost, infinite_cost, assert, zero, euclidean_prepend, euclidean_append, recursive_query.
+         */
+        static enum OutOfMapBehavior getOutOfMapBehaviorFromString(const std::string & behavior_name);
+
         unsigned int getCost(int dx, int dy, int startTheta, int endTheta) const;
 
         bool loadCostMap(const std::string & mapfile);
