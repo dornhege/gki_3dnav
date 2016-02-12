@@ -52,6 +52,9 @@ public:
      */
     virtual std::string getPlanningFrame() const;
 
+    /// Read in parameters that can be re-set for each makePlan call.
+    virtual void readDynamicParameters();
+
 protected:
     virtual bool sampleValidPoses(gki_3dnav_planner::SampleValidPoses::Request & req, gki_3dnav_planner::SampleValidPoses::Response & resp);
 

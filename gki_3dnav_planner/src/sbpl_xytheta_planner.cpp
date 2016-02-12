@@ -61,18 +61,17 @@ void SBPLXYThetaPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
 
     std::string planner_type;
     private_nh_->param("planner_type", planner_type, std::string("ARAPlanner"));
-    private_nh_->param("allocated_time", allocated_time_, 10.0);
-    private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
     private_nh_->param("forward_search", forward_search_, bool(false));
     std::string motion_primitive_filename;
     private_nh_->param("motion_primitive_filename", motion_primitive_filename, std::string(""));
-    private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
 
     double trans_vel, rot_vel;
     private_nh_->param("trans_vel", trans_vel, 0.4);
     private_nh_->param("rot_vel", rot_vel, 1.3);
     bool track_expansions;
     private_nh_->param("track_expansions", track_expansions, false);
+
+    readDynamicParameters();
 
     // Environment creation and initialization
     env_ = createEnvironment(*private_nh_);
@@ -142,6 +141,13 @@ std::string SBPLXYThetaPlanner::getPlanningFrame() const
     return env_->getPlanningFrame();
 }
 
+void SBPLXYThetaPlanner::readDynamicParameters()
+{
+    private_nh_->param("allocated_time", allocated_time_, 10.0);
+    private_nh_->param("initial_epsilon", initial_epsilon_, 3.0);
+    private_nh_->param("force_scratch_limit", force_scratch_limit_, 500);
+}
+
 void SBPLXYThetaPlanner::publishStats(int solution_cost, int solution_size, const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal)
 {
     gki_3dnav_planner::PlannerStats stats;
@@ -202,6 +208,9 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
         ROS_ERROR("Global planner is not initialized");
         return false;
     }
+
+    readDynamicParameters();
+
     env_->updateForPlanRequest();
 
     ROS_INFO("Planning frame is %s", getPlanningFrame().c_str());
