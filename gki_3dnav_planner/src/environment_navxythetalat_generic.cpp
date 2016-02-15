@@ -33,6 +33,7 @@ EnvironmentNavXYThetaLatGeneric::EnvironmentNavXYThetaLatGeneric(ros::NodeHandle
                     freespace_costmap_out_of_map_behavior));
         useFreespaceHeuristic_ = true;
     }
+    // TODO check that trans_vel/rot_vel from freespace_heuristic_costmap are same as in env, when set.
 
     timeFreespace = new Timing("freespace_heuristic", true, Timing::SP_STATS, false);
     timeHeuristic = new Timing("heuristic", true, Timing::SP_STATS, false);

@@ -201,7 +201,7 @@ int main(int argc, char** argv)
   }
 
   // force a replan every time, our queries shouldn't depend on each other, which might happen for efficiency.
-  ros::param::set(std::string("/move_base_node/") + plannerName + "/force_scratch_limit", 0);
+  ros::param::set(std::string("/move_base_node/") + plannerName + "/force_scratch_limit", -1);
 
   forEach(ParameterRun & run, param_runs) {
       ros::param::set(run.paramName, run.parameter);

@@ -40,6 +40,8 @@ EnvironmentNavXYThetaLatMoveit::~EnvironmentNavXYThetaLatMoveit()
     delete timeActionCostParent;
     delete timeFullBodyCollision;
     delete time3dCheck;
+    scene.reset();
+    scene_monitor.reset();
 }
 
 bool EnvironmentNavXYThetaLatMoveit::InitializeEnv(int width, int height, const unsigned char* mapdata,
@@ -188,6 +190,7 @@ void EnvironmentNavXYThetaLatMoveit::updateForPlanRequest()
 
 // PlanningScene handling
 
+// TODO should provide proper costs_changed trigger
 void EnvironmentNavXYThetaLatMoveit::update_planning_scene()
 {
     scene_monitor->requestPlanningSceneState(scene_update_name);

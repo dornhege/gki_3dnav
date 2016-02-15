@@ -226,6 +226,22 @@ bool SBPLXYThetaPlanner::makePlan(const geometry_msgs::PoseStamped& startPose,
     }
 
     readDynamicParameters();
+    if(force_scratch_limit_ == -1) {
+        ROS_INFO("force_scratch_limit_ set to -1: Hard re-creating environment and planner.");
+        delete planner_;
+        delete env_;
+        planner_ = NULL;
+        env_ = NULL;
+
+        if(!createAndInitializeEnvironment()) {
+            ROS_ERROR("Environment creation or initialization failed!");
+            return false;
+        }
+        if(!createPlanner()) {
+            ROS_ERROR("Failed to create search planner!");
+            return false;
+        }
+    }
 
     env_->updateForPlanRequest();
 
