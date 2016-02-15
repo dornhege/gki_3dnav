@@ -31,6 +31,14 @@ class EnvironmentNavXYThetaLatGeneric : public EnvironmentNAVXYTHETALAT
         EnvironmentNavXYThetaLatGeneric(ros::NodeHandle & nhPriv);
         virtual ~EnvironmentNavXYThetaLatGeneric();
 
+        virtual bool InitializeEnv(int width, int height, const unsigned char* mapdata,
+                double startx, double starty, double starttheta,
+                double goalx, double goaly, double goaltheta,
+                double goaltol_x, double goaltol_y, double goaltol_theta,
+                const std::vector<sbpl_2Dpt_t>& perimeterptsV, double cellsize_m,
+                double nominalvel_mpersecs, double timetoturn45degsinplace_secs,
+                unsigned char obsthresh, const char* sMotPrimFile);
+
         /// Returns the tf frame that this env assumes all poses to be in.
         virtual std::string getPlanningFrame() const = 0;
 

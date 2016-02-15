@@ -10,6 +10,8 @@ GKI3dNavPlanner:
   force_scratch_limit: 0
   #expansion_color_scheme: occupancy
   expansion_color_scheme: costmap
+  trans_vel: 0.4
+  rot_vel: 1.3089969389957471827
 
   scene_update_name: /get_planning_scene
   allowed_collision_links:

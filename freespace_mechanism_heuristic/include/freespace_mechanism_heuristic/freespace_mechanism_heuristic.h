@@ -67,6 +67,8 @@ class HeuristicCostMap
         unsigned int getHeight() const { return height_; }
         unsigned int getWidth() const { return width_; }
         unsigned int getNumThetaDirs() const { return numThetaDirs_; }
+        double getTransVelCellsPerSec() const { return tv_; }
+        double getRotVel() const { return rv_; }
 
         /// Compute the intersecting border coordinate for a (dx, dy) query that goes outside of the map
         void computeBorderCell(int dx, int dy, int & border_x, int & border_y) const;
@@ -92,7 +94,7 @@ class HeuristicCostMap
         int height_;
         int width_;
         unsigned int numThetaDirs_;
-        double tv_;     ///< tv in ms/
+        double tv_;     ///< tv in cells/s
         double rv_;     ///< rv in rad/s
 
         enum OutOfMapBehavior outOfMapBehaviour_;

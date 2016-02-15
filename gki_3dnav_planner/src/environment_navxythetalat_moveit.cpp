@@ -54,7 +54,7 @@ bool EnvironmentNavXYThetaLatMoveit::InitializeEnv(int width, int height, const 
 {
     poseWorldToEnv(startx, starty, starttheta, startx, starty, starttheta); 
     poseWorldToEnv(goalx, goaly, goaltheta, goalx, goaly, goaltheta); 
-    return EnvironmentNAVXYTHETALAT::InitializeEnv(width, height, mapdata,
+    return EnvironmentNavXYThetaLatGeneric::InitializeEnv(width, height, mapdata,
             startx, starty, starttheta, goalx, goaly, goaltheta,
             goaltol_x, goaltol_y, goaltol_theta,
             perimeterptsV, cellsize_m, nominalvel_mpersecs, timetoturn45degsinplace_secs,

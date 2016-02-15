@@ -33,7 +33,6 @@ EnvironmentNavXYThetaLatGeneric::EnvironmentNavXYThetaLatGeneric(ros::NodeHandle
                     freespace_costmap_out_of_map_behavior));
         useFreespaceHeuristic_ = true;
     }
-    // TODO check that trans_vel/rot_vel from freespace_heuristic_costmap are same as in env, when set.
 
     timeFreespace = new Timing("freespace_heuristic", true, Timing::SP_STATS, false);
     timeHeuristic = new Timing("heuristic", true, Timing::SP_STATS, false);
@@ -43,6 +42,36 @@ EnvironmentNavXYThetaLatGeneric::~EnvironmentNavXYThetaLatGeneric()
 {
     delete timeFreespace;
     delete timeHeuristic;
+}
+
+bool EnvironmentNavXYThetaLatGeneric::InitializeEnv(int width, int height, const unsigned char* mapdata,
+        double startx, double starty, double starttheta,
+        double goalx, double goaly, double goaltheta,
+        double goaltol_x, double goaltol_y, double goaltol_theta,
+        const std::vector<sbpl_2Dpt_t>& perimeterptsV, double cellsize_m,
+        double nominalvel_mpersecs, double timetoturn45degsinplace_secs,
+        unsigned char obsthresh, const char* sMotPrimFile)
+{
+    if(freespace_heuristic_costmap != NULL) {
+        if(fabs(freespace_heuristic_costmap->getTransVelCellsPerSec() * cellsize_m - nominalvel_mpersecs) > 0.0001) {
+            ROS_ERROR("InitializeEnv called with different transvel from freespace_heuristic_costmap: "
+                    "freespace_heuristic_costmap: %f (%f cells/s) - provided %f",
+                    freespace_heuristic_costmap->getTransVelCellsPerSec() * cellsize_m,
+                    freespace_heuristic_costmap->getTransVelCellsPerSec(),
+                    nominalvel_mpersecs);
+        }
+        double fsTime = (M_PI/4.0)/freespace_heuristic_costmap->getRotVel();
+        if(fabs(fsTime - timetoturn45degsinplace_secs) > 0.0001) {
+            ROS_ERROR("InitializeEnv called with different time to turn 45 def from freespace_heuristic_costmap: "
+                    "freespace_heuristic_costmap: %f (rotvel: %f rad/s) - provided: %f", fsTime,
+                    freespace_heuristic_costmap->getRotVel(), timetoturn45degsinplace_secs);
+        }
+    }
+    return EnvironmentNAVXYTHETALAT::InitializeEnv(width, height, mapdata,
+            startx, starty, starttheta, goalx, goaly, goaltheta,
+            goaltol_x, goaltol_y, goaltol_theta, perimeterptsV,
+            cellsize_m, nominalvel_mpersecs, timetoturn45degsinplace_secs,
+            obsthresh, sMotPrimFile);
 }
 
 bool EnvironmentNavXYThetaLatGeneric::useFreespaceHeuristic(bool on)
