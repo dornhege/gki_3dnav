@@ -161,7 +161,6 @@ int EnvironmentNavXYThetaLatMoveit::GetActionCost(int SourceX, int SourceY, int 
     return cost;
 }
 
-// TODO octomap vs. costmap extends -> This should be extents of underlying grid
 bool EnvironmentNavXYThetaLatMoveit::getExtents(double & minX, double & maxX, double & minY, double & maxY)
 {
     update_planning_scene();    // get current octomap
@@ -178,6 +177,11 @@ bool EnvironmentNavXYThetaLatMoveit::getExtents(double & minX, double & maxX, do
     double minz, maxz;
     octree.getMetricMin(minX, minY, minz);
     octree.getMetricMax(maxX, maxY, maxz);
+    // TODO octomap vs. costmap extends -> This should be extents of underlying grid
+    if(worldOriginX < minX)
+        minX = worldOriginX;
+    if(worldOriginY < minY)
+        minY = worldOriginY;
     return true;
 }
 
